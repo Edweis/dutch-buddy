@@ -2,8 +2,8 @@ extends layout
 
 block content
   section.hero
-    h1 Praat met Buddy
-    p.sub Have a real Dutch conversation. Buddy speaks and writes simple Dutch, you read along and answer out loud — and the words you use stick, Anki-style.
+    h1 Praat met Saar
+    p.sub Have a real Dutch conversation. Saar speaks and writes simple Dutch, you read along and answer out loud — and the words you use stick, Anki-style.
 
     - var missing = []
     if !status.llm
@@ -32,4 +32,4 @@ block content
   form(hx-post="/conversation/start", hx-target="main.container", hx-swap="innerHTML")
     button.primary(type="submit") Start talking →
 
-  p.hint Use <strong>Chrome</strong> and allow the microphone. Buddy speaks in Dutch; tap 🎙️ to reply out loud.
+  p.hint Use <strong>Chrome</strong> and allow the microphone. Saar speaks in Dutch; tap 🎙️ to reply out loud.

@@ -1,21 +1,36 @@
 extends layout
+include partials/bubbles
 
 block content
-  section.chat-wrap
-    #chat.chat
-      if error
-        .bubble.error
-          p Couldn't start the conversation:
-          p.err= error
-      else
-        include partials/bubble-tutor
+  .session-grid
+    .chat-col
+      #chat.chat(data-cid=cid)
+        if error
+          .bubble.error
+            p Saar couldn't start the conversation:
+            p.err= error
+        else
+          each m in messages
+            +bubble(m)
 
-    #composer.composer(class=error ? 'hidden' : '')
-      p.transcript(data-transcript)
-      .controls
-        button.record(type="button", data-record) 🎙️ Tap to speak
-        button.ghost(type="button", data-send-text) ⌨️ Type instead
-      form.type-form.hidden(data-type-form)
-        input(type="text", name="typed", placeholder="Type your Dutch reply…", autocomplete="off")
-        button.ghost(type="submit") Send
-    a.hint(href="/progress") See your words →
+      #composer.composer(class=error ? 'hidden' : '')
+        p.transcript(data-transcript)
+        .controls
+          button.record(type="button", data-record) Tap or press Space
+          button.ghost.hidden(type="button", data-cancel) Cancel (Esc)
+
+      .session-links
+        a.hint(href="/conversations") ← All chats
+        a.hint(href="/progress") Your words →
+
+    aside.coach-col
+      .coach-header
+        span.coach-title Coach
+        span.coach-sub always here to help
+      .coach-intro Ask in English, anytime — e.g. “How do I talk about my job?” or “Why ‘leren’ and not ‘leer’?”
+      .coach-log(data-coach-log)
+        each c in (coachMessages || [])
+          +coachMsg(c)
+      form.coach-form(data-coach-form)
+        input(type="text", name="q", placeholder="Ask the coach…", autocomplete="off")
+        button.ghost(type="submit") Ask

@@ -1,5 +1,4 @@
 // Azure Speech text-to-speech. Returns MP3 audio bytes for Dutch text.
-// Supports a "slow" rate so new words can be spoken clearly for learners.
 
 const KEY = process.env.AZURE_SPEECH_KEY?.trim();
 const REGION = process.env.AZURE_SPEECH_REGION?.trim() || 'westeurope';
@@ -7,55 +6,65 @@ const VOICE = process.env.AZURE_SPEECH_VOICE?.trim() || 'nl-NL-ColetteNeural';
 
 export const ttsAvailable = Boolean(KEY);
 
-// The native Dutch neural voices Azure offers (Netherlands + Flemish Belgium).
-export const DUTCH_VOICES = [
-  { id: 'nl-NL-ColetteNeural', name: 'Colette', gender: 'Female', locale: 'Netherlands' },
-  { id: 'nl-NL-FennaNeural', name: 'Fenna', gender: 'Female', locale: 'Netherlands' },
-  { id: 'nl-NL-MaartenNeural', name: 'Maarten', gender: 'Male', locale: 'Netherlands' },
-  { id: 'nl-BE-DenaNeural', name: 'Dena', gender: 'Female', locale: 'Belgium (Flemish)' },
-  { id: 'nl-BE-ArnaudNeural', name: 'Arnaud', gender: 'Male', locale: 'Belgium (Flemish)' },
-];
-const VOICE_IDS = new Set(DUTCH_VOICES.map((v) => v.id));
-export const defaultVoice = VOICE_IDS.has(VOICE) ? VOICE : 'nl-NL-ColetteNeural';
-
 function escapeXml(s) {
   return String(s).replace(/[<>&'"]/g, (c) =>
     ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
 }
 
-function ssml(text, rate, voice) {
-  const lang = voice.slice(0, 5); // e.g. nl-NL
-  const prosody = rate && rate !== 'default'
-    ? `<prosody rate="${rate === 'slow' ? '-25%' : escapeXml(rate)}">${escapeXml(text)}</prosody>`
-    : escapeXml(text);
-  return `<speak version="1.0" xml:lang="${lang}"><voice name="${voice}">${prosody}</voice></speak>`;
+function ssml(text) {
+  const lang = VOICE.slice(0, 5); // e.g. nl-NL
+  return `<speak version="1.0" xml:lang="${lang}"><voice name="${VOICE}">${escapeXml(text)}</voice></speak>`;
 }
 
 // Exchange the subscription key for a short-lived (10 min) auth token so the
 // browser Speech SDK can do recognition without ever seeing the key.
-export async function issueToken() {
-  if (!KEY) throw new Error('AZURE_SPEECH_KEY not set');
+// Cached for 8 min and retried on transient network failures, so a blip reaching
+// Azure doesn't surface as "Mic setup failed".
+let cachedToken = null;
+let cachedAt = 0;
+
+async function fetchAzureToken() {
   const res = await fetch(`https://${REGION}.api.cognitive.microsoft.com/sts/v1.0/issueToken`, {
     method: 'POST',
     headers: { 'Ocp-Apim-Subscription-Key': KEY, 'Content-Length': '0' },
+    signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) throw new Error(`Azure token ${res.status}: ${await res.text()}`);
-  return { token: await res.text(), region: REGION };
+  return res.text();
 }
 
-export async function synthesize(text, { rate = 'default', voice } = {}) {
+export async function issueToken() {
   if (!KEY) throw new Error('AZURE_SPEECH_KEY not set');
-  const chosen = VOICE_IDS.has(voice) ? voice : defaultVoice;
+  if (cachedToken && Date.now() - cachedAt < 8 * 60 * 1000) {
+    return { token: cachedToken, region: REGION };
+  }
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      cachedToken = await fetchAzureToken();
+      cachedAt = Date.now();
+      return { token: cachedToken, region: REGION };
+    } catch (err) {
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+
+export async function synthesize(text) {
+  if (!KEY) throw new Error('AZURE_SPEECH_KEY not set');
   const url = `https://${REGION}.tts.speech.microsoft.com/cognitiveservices/v1`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Ocp-Apim-Subscription-Key': KEY,
       'Content-Type': 'application/ssml+xml',
-      'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
+      // Higher-fidelity 48 kHz / 192 kbps audio for a clearer, more natural voice.
+      'X-Microsoft-OutputFormat': 'audio-48khz-192kbitrate-mono-mp3',
       'User-Agent': 'dutch-buddy',
     },
-    body: ssml(text, rate, chosen),
+    body: ssml(text),
   });
   if (!res.ok) throw new Error(`Azure TTS ${res.status}: ${await res.text()}`);
   return Buffer.from(await res.arrayBuffer());

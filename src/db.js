@@ -42,6 +42,35 @@ db.exec(`
     heard      TEXT,                              -- transcript of what the learner said
     created_at INTEGER NOT NULL
   );
+
+  -- Saved conversations so they can be revisited and continued.
+  CREATE TABLE IF NOT EXISTS conversations (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS messages (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    role            TEXT NOT NULL,                -- 'tutor' | 'learner'
+    nl              TEXT NOT NULL,
+    en              TEXT,
+    note            TEXT,                          -- learner: JSON correction {mistakes, fixed}
+    gloss           TEXT,                          -- tutor: JSON [{nl, en}] of new words this turn
+    created_at      INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_messages_convo ON messages(conversation_id, id);
+
+  -- Saved side-coach Q&A, tied to a conversation.
+  CREATE TABLE IF NOT EXISTS coach_messages (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    question        TEXT NOT NULL,
+    answer          TEXT NOT NULL,
+    examples        TEXT,                          -- JSON array of {nl, en}
+    created_at      INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_coach_convo ON coach_messages(conversation_id, id);
 `);
 
 // Seed / upsert the word list. Safe to run on every boot.
@@ -54,6 +83,6 @@ const seedWords = db.transaction((words) => {
 });
 seedWords(WORDS);
 
-export function wordCount() {
-  return db.prepare('SELECT COUNT(*) AS n FROM words').get().n;
-}
+// Migration: add messages.gloss for databases created before it existed.
+const msgCols = db.prepare('PRAGMA table_info(messages)').all().map((c) => c.name);
+if (!msgCols.includes('gloss')) db.exec('ALTER TABLE messages ADD COLUMN gloss TEXT');

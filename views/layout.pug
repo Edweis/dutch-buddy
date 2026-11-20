@@ -12,8 +12,8 @@ html(lang="en")
       a.brand(href="/") 🧡 Dutch Buddy
       nav
         a(href="/") Home
-        a(href="/voices") Voices
+        a(href="/conversations") Chats
         a(href="/progress") Progress
-    main.container
+    main.container(class=(typeof bodyClass !== 'undefined' && bodyClass) ? bodyClass : '')
       block content
     script(src="/js/app.js")

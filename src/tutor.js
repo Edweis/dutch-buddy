@@ -1,64 +1,92 @@
-// The tutor: runs a flowing Dutch conversation tuned to the learner's level.
-// Each turn is short and simple, reuses words the learner knows, and introduces
-// at most a couple of new words. Returns structured data so the app can show the
-// Dutch + English, speak it, and feed the spaced-repetition engine underneath.
+// Saar: a warm Dutch conversation partner for an absolute beginner. She has a
+// natural conversation and teaches through it (comprehensible input, pushed
+// output, recycling, gentle selective correction) — without looking up the
+// learner's known words or past conversations.
 
 import { chatJSON } from './llm.js';
 
-const SYSTEM = `You are "Buddy", a warm, patient Dutch conversation tutor.
-Your student is an English speaker learning Dutch from scratch.
+export const NAME = 'Saar';
 
-Rules for EVERY reply:
-- Speak in Dutch, but keep it VERY short and simple: 1-2 short sentences.
-- Reuse words the student already knows (given below). Prefer high-frequency words.
-- Introduce AT MOST 2 new Dutch words per turn, and only when natural.
-- Always finish with a simple question so the conversation keeps going.
-- Be encouraging. If the student made a mistake, gently model the correct version
-  in your Dutch reply and explain briefly in the English "note".
-- Never switch the conversation to English; English only appears in "en" and "note".
+const SYSTEM = `You are ${NAME}, a warm, friendly Dutch woman having a REAL conversation with an
+English-speaking friend who is an ABSOLUTE BEGINNER learning Dutch. You are a conversation
+partner who teaches through the conversation — NOT a quiz master or a vocabulary drill.
+
+On EVERY turn:
+- Start very simple and short. Judge their level from how they reply IN THIS conversation:
+  long pauses, English words, very short or broken replies, or asking the coach = go simpler
+  and shorter next turn; fast, fuller, correct replies = add ONE small step. When unsure, err
+  simpler — a beginner who understands stays engaged.
+- React to what they just said, then keep the conversation going. Keep each turn short:
+  1-2 short sentences.
+- COMPREHENSIBLE INPUT: make every turn understandable from context. Introduce AT MOST ONE
+  new word or phrase per turn; everything else should be words they've already heard from you.
+  Put the genuinely new or hard words of this turn (ones a beginner wouldn't know) in
+  "glossary" with a short English meaning — these are shown to the learner INSTEAD of a full
+  translation, so they decode the Dutch themselves.
+- PUSH OUTPUT: prefer questions that make them PRODUCE a few words, not yes/no. Favour
+  wat/waar/wanneer/hoe over "is/heb je…?". If they answer in one word, accept it warmly, then
+  invite a little more ("En waarom?" / "Vertel eens."). Stretch by one step, never interrogate.
+- RECYCLE on purpose: reuse the Dutch words and patterns they've already produced or heard,
+  bringing a few back later in a new context for repeated practice. Keep most WORDS familiar;
+  lean on a small stable core (zijn, hebben, gaan, willen, leuk, vandaag…) and grow it slowly.
+- Feed useful whole PHRASES they can reuse as-is ("Ik wil graag…", "Zullen we…?", "Mag ik…?",
+  "Ik vind … leuk."); model the chunk and give them a chance to use it back.
+- NEVER repeat a question you've already asked. NEVER re-introduce yourself after your first message.
+- Sound like a REAL Dutch person, NOT a chipper, over-enthusiastic AI. Dutch people are
+  direct and understated. BANNED reflexes: "Ooh!", "Wow!", "Wat leuk!", "Dat is interessant!",
+  "Wat spannend!", and praising/affirming everything they say. Do NOT open turns with an
+  exclamation of enthusiasm. Instead react to the actual CONTENT like a friend would: a
+  follow-up detail, a short opinion of your own, a dry or playful aside, or simply the next
+  question. Vary it — often NO reaction word at all is most natural. Warm but understated.
+- Their message comes from SPEECH-TO-TEXT, so it may contain mispronounced/misheard words. Work
+  out what they most likely meant; don't treat a recognition slip as a grammar mistake. If it's
+  garbled or means something odd (likely a mispronunciation that changed the meaning), don't
+  pretend to understand — lightly ask them to repeat or clarify, or make a small friendly joke
+  in Dutch, and stay in the conversation.
+- CORRECTION — gentle and SELECTIVE (this is a conversation, not grading):
+  * FIRST recast: naturally weave the corrected form into your own Dutch reply, without drawing
+    attention to it. This is your main correction tool.
+  * In "mistakes", list AT MOST the 1-2 errors that most block being understood (word order,
+    wrong verb, wrong word). IGNORE minor slips (de/het articles, small spelling) for a beginner.
+    Quote the Dutch, explain briefly in ENGLISH (e.g. \`"werkte" → "werk" (present tense, not past)\`).
+  * "fixed" = the full corrected sentence, only when you listed a mistake.
+  * If they communicated successfully, leave "mistakes" empty and "fixed" an empty string —
+    successful communication is the goal, not perfection.
+- "nl" is Dutch ONLY and contains NO emoji (it is read aloud).
 
 Return ONLY a JSON object:
 {
-  "nl": "<your Dutch turn>",
-  "en": "<natural English translation of nl>",
-  "note": "<optional short English coaching tip about the student's last message, or empty>",
-  "new_words": [{"nl": "<word>", "en": "<english>"}]   // words you introduced this turn, may be empty
+  "nl": "<your Dutch reply>",
+  "en": "<natural English translation of nl (a fallback, shown only if they ask)>",
+  "glossary": [{"nl": "<new word/phrase>", "en": "<short English meaning>"}],
+  "mistakes": ["<short correction>", "..."],
+  "fixed": "<full corrected Dutch sentence, or empty string if no mistakes>"
 }`;
 
-function knownLine(known) {
-  if (!known.length) return 'The student knows almost no Dutch yet. Start from the very beginning.';
-  return 'Words the student already knows: ' + known.map((w) => w.nl).join(', ') + '.';
-}
-
 function historyLines(history) {
-  // Last several turns, oldest first, as plain context.
-  return history.slice(-10).map((t) => `${t.role === 'tutor' ? 'Buddy' : 'Student'}: ${t.nl}`).join('\n');
+  return history.slice(-12).map((t) => `${t.role === 'tutor' ? NAME : 'Friend'}: ${t.nl}`).join('\n');
 }
 
-export async function openingTurn(known) {
+export async function openingTurn() {
   const messages = [
     { role: 'system', content: SYSTEM },
     {
       role: 'user',
-      content:
-        `${knownLine(known)}\n\n` +
-        `Start the conversation: greet the student in Dutch and ask one very simple question. ` +
-        `Introduce yourself as Buddy if natural.`,
+      content: `This is your FIRST message. Greet your friend warmly with a simple reusable phrase, say your name is ${NAME}, and ask ONE question they can answer with a single familiar word. Keep it tiny.`,
     },
   ];
   return normalize(await chatJSON(messages));
 }
 
-export async function nextTurn(history, learnerText, known) {
+export async function nextTurn(history, learnerText) {
   const messages = [
     { role: 'system', content: SYSTEM },
     {
       role: 'user',
       content:
-        `${knownLine(known)}\n\n` +
-        `Conversation so far:\n${historyLines(history)}\n\n` +
-        `The student just said (Dutch, via speech-to-text, may contain errors):\n"${learnerText}"\n\n` +
-        `Reply with your next short Dutch turn.`,
+        `The conversation so far:\n${historyLines(history)}\n\n` +
+        `Your friend just said (via speech-to-text, may contain errors):\n"${learnerText}"\n\n` +
+        `Reply with your next short, natural Dutch turn.`,
     },
   ];
   return normalize(await chatJSON(messages));
@@ -68,11 +96,14 @@ function normalize(out) {
   return {
     nl: String(out?.nl || '').trim(),
     en: String(out?.en || '').trim(),
-    note: String(out?.note || '').trim(),
-    new_words: Array.isArray(out?.new_words)
-      ? out.new_words
-          .filter((w) => w && w.nl)
-          .map((w) => ({ nl: String(w.nl).trim().toLowerCase(), en: String(w.en || '').trim() }))
+    glossary: Array.isArray(out?.glossary)
+      ? out.glossary
+          .filter((g) => g && g.nl)
+          .map((g) => ({ nl: String(g.nl).trim(), en: String(g.en || '').trim() }))
       : [],
+    mistakes: Array.isArray(out?.mistakes)
+      ? out.mistakes.map((s) => String(s).trim()).filter(Boolean)
+      : [],
+    fixed: String(out?.fixed || '').trim(),
   };
 }

@@ -4,10 +4,15 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { db } from './db.js';
-import { knownWords, introduceWord, reinforceFromText, stats } from './srs.js';
+import { reinforceFromText, stats } from './srs.js';
 import { openingTurn, nextTurn } from './tutor.js';
+import { coachAnswer } from './coach.js';
+import {
+  createConversation, conversationExists, addMessage, getMessages, getHistory, listConversations,
+  setMessageNote, addCoachMessage, getCoachMessages,
+} from './conversations.js';
 import { llmAvailable, llmStatus } from './llm.js';
-import { synthesize, issueToken, ttsAvailable, DUTCH_VOICES, defaultVoice } from './tts.js';
+import { synthesize, issueToken, ttsAvailable } from './tts.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -17,26 +22,16 @@ app.set('views', join(__dirname, '..', 'views'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(join(__dirname, '..', 'public')));
 
-// Single-user local app: one in-memory conversation is enough.
-let convo = null; // { history: [{role:'tutor'|'learner', nl}] }
-
-function applyNewWords(turn) {
-  for (const w of turn.new_words || []) introduceWord(w.nl, w.en);
+function fmtDate(ms) {
+  return new Date(ms).toLocaleString('en-GB', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
 }
 
 app.get('/', (req, res) => {
   res.render('index', {
     stats: stats(),
     status: { llm: llmAvailable, voice: ttsAvailable },
-  });
-});
-
-app.get('/voices', (req, res) => {
-  res.render('voices', {
-    voices: DUTCH_VOICES,
-    defaultVoice,
-    available: ttsAvailable,
-    sample: 'Hallo! Ik ben Buddy, jouw Nederlandse taalmaatje. Zullen we samen beginnen?',
   });
 });
 
@@ -49,44 +44,81 @@ app.get('/progress', (req, res) => {
   res.render('progress', { stats: stats(), words });
 });
 
-// --- Conversation ----------------------------------------------------------
-app.post('/conversation/start', async (req, res) => {
-  convo = { history: [] };
-  try {
-    const turn = await openingTurn(knownWords());
-    applyNewWords(turn);
-    convo.history.push({ role: 'tutor', nl: turn.nl });
-    res.render('session', { turn });
-  } catch (err) {
-    res.render('session', { error: err.message });
-  }
+// --- Conversations ---------------------------------------------------------
+app.get('/conversations', (req, res) => {
+  const convos = listConversations().map((c) => ({ ...c, when: fmtDate(c.updated_at) }));
+  res.render('conversations', { convos });
 });
 
-app.post('/conversation/reply', async (req, res) => {
-  if (!convo) convo = { history: [] };
+// Reopen a saved conversation to read and continue it.
+app.get('/conversation/:id', (req, res) => {
+  const id = Number(req.params.id);
+  if (!conversationExists(id)) return res.redirect('/conversations');
+  res.render('session', {
+    cid: id,
+    messages: getMessages(id),
+    coachMessages: getCoachMessages(id),
+    bodyClass: 'wide',
+  });
+});
+
+app.post('/conversation/start', async (req, res) => {
+  const cid = createConversation();
+  try {
+    const turn = await openingTurn();
+    addMessage(cid, 'tutor', { nl: turn.nl, en: turn.en, gloss: turn.glossary });
+  } catch (err) {
+    console.error('[start]', err.message); // land on the page anyway; it'll surface on first reply
+  }
+  // Redirect the browser to the conversation's own URL.
+  res.set('HX-Redirect', `/conversation/${cid}`);
+  res.end();
+});
+
+app.post('/conversation/:id/reply', async (req, res) => {
+  const cid = Number(req.params.id);
+  if (!conversationExists(cid)) return res.status(404).render('partials/bubble-error', { message: 'Conversation not found.' });
   const learner = (req.body.heard || '').trim();
+  let learnerMsgId = null;
   if (learner) {
-    convo.history.push({ role: 'learner', nl: learner });
+    learnerMsgId = addMessage(cid, 'learner', { nl: learner });
     reinforceFromText(learner);
   }
   try {
-    const turn = await nextTurn(convo.history, learner, knownWords());
-    applyNewWords(turn);
-    convo.history.push({ role: 'tutor', nl: turn.nl });
+    const turn = await nextTurn(getHistory(cid), learner);
+    // The correction is about what the learner said -> store it on their message.
+    if (learnerMsgId && (turn.mistakes.length || turn.fixed)) {
+      setMessageNote(learnerMsgId, JSON.stringify({ mistakes: turn.mistakes, fixed: turn.fixed }));
+    }
+    addMessage(cid, 'tutor', { nl: turn.nl, en: turn.en, gloss: turn.glossary });
     res.render('partials/bubble-tutor', { turn });
   } catch (err) {
     res.status(200).render('partials/bubble-error', { message: err.message });
   }
 });
 
+// Side coach: answer an English help question, with the conversation as context.
+app.post('/coach', async (req, res) => {
+  const question = (req.body.q || '').trim();
+  const cid = Number(req.body.cid) || null;
+  if (!question) return res.status(400).end();
+  const valid = cid && conversationExists(cid);
+  const history = valid ? getHistory(cid) : [];
+  try {
+    const out = await coachAnswer(question, history);
+    if (valid) addCoachMessage(cid, { question, answer: out.answer, examples: out.examples });
+    res.render('partials/coach-answer', { question, ...out });
+  } catch (err) {
+    res.render('partials/coach-answer', { question, answer: 'Helper error: ' + err.message, examples: [] });
+  }
+});
+
 // --- Voice -----------------------------------------------------------------
 app.get('/tts', async (req, res) => {
   const text = (req.query.text || '').toString().slice(0, 500);
-  const rate = (req.query.rate || 'default').toString();
-  const voice = (req.query.voice || '').toString();
   if (!text) return res.status(400).send('missing text');
   try {
-    const mp3 = await synthesize(text, { rate, voice });
+    const mp3 = await synthesize(text);
     res.set('Content-Type', 'audio/mpeg');
     res.set('Cache-Control', 'public, max-age=86400');
     res.send(mp3);

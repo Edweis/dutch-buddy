@@ -41,19 +41,9 @@ function reinforce(wordId, heard) {
   logReview.run({ word_id: wordId, grade: 2, item_type: 'conversation', heard: heard ?? null, created_at: now });
 }
 
-// Everything the learner has been introduced to, for building sentences.
-export function knownWords() {
-  return db.prepare(`
-    SELECT w.nl, w.en, w.pos, c.status
-    FROM cards c JOIN words w ON w.id = c.word_id
-    ORDER BY w.rank ASC
-  `).all();
-}
-
-// --- Conversation-driven vocabulary ----------------------------------------
-const findWordByNl = db.prepare('SELECT * FROM words WHERE nl = ?');
-const maxRank = db.prepare('SELECT COALESCE(MAX(rank), 0) AS m FROM words');
-const insertWordStmt = db.prepare('INSERT INTO words (nl, en, pos, rank) VALUES (?, ?, ?, ?)');
+// --- Usage tracking (decoupled from the conversation) ----------------------
+// This only powers the Progress page; it never influences what Saar says.
+const allWords = db.prepare('SELECT id, nl FROM words');
 
 function strip(s) {
   return (s || '')
@@ -65,40 +55,20 @@ function strip(s) {
     .trim();
 }
 
-// Insert a word the tutor introduced if we don't have it yet (grows vocab
-// beyond the seed list), then make sure it has a card.
-export function introduceWord(nl, en) {
-  const clean = (nl || '').trim();
-  if (!clean) return null;
-  let w = findWordByNl.get(clean);
-  if (!w) {
-    insertWordStmt.run(clean, en || '', 'tutor', maxRank.get().m + 1);
-    w = findWordByNl.get(clean);
-  }
-  const hasCard = db.prepare('SELECT 1 FROM cards WHERE word_id = ?').get(w.id);
-  if (!hasCard) {
-    const now = Date.now();
-    insertCard.run(w.id, now, now, now);
-  }
-  return w;
-}
-
-// Reinforce every already-introduced word the learner actually produced.
-// This is what makes the conversation drive spaced repetition.
+// For every seed word the learner actually said, make sure it has a card and
+// reinforce it. The Progress page thus reflects the words you use, not any
+// vocabulary fed to the tutor.
 export function reinforceFromText(text) {
   const norm = strip(text);
   if (!norm) return [];
   const tokens = new Set(norm.split(' '));
-  const introduced = db.prepare(
-    'SELECT w.id, w.nl FROM cards c JOIN words w ON w.id = c.word_id'
-  ).all();
   const reinforced = [];
-  for (const w of introduced) {
+  for (const w of allWords.all()) {
     const key = strip(w.nl);
     if (!key) continue;
     const hit = key.includes(' ') ? norm.includes(key) : tokens.has(key);
     if (hit) {
-      reinforce(w.id, text);
+      reinforce(w.id, text); // creates the card if missing, then advances it
       reinforced.push(w.nl);
     }
   }
