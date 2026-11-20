@@ -81,7 +81,38 @@
   // it only stops when you tap again. Final segments accumulate in `finals`.
   let recognizer = null;
   let recognizing = false;
-  let finals = [];
+  let finals = [];        // finalized segments on the current line (not yet banked)
+  let savedLines = [];    // sentences banked with Space, each shown on its own line
+
+  // Render banked lines stacked, with the current line (finals + live interim) last.
+  function renderTranscript(transcriptEl, interim) {
+    const current = [finals.join(' '), interim || ''].map((s) => s.trim()).filter(Boolean).join(' ');
+    transcriptEl.textContent = [...savedLines, current].filter(Boolean).join('\n');
+  }
+
+  // Space: bank the current sentence and start the next one on a new line below.
+  function saveProgress(transcriptEl, cancelBtn) {
+    if (!recognizing) return;
+    const current = finals.join(' ').replace(/\s+/g, ' ').trim();
+    if (!current) return; // nothing finalized to bank yet
+    savedLines.push(current);
+    finals = [];
+    renderTranscript(transcriptEl, '');
+    if (cancelBtn) cancelBtn.textContent = 'Redo sentence (Esc)';
+    transcriptEl.classList.add('saved'); // brief green confirmation
+    setTimeout(() => transcriptEl.classList.remove('saved'), 400);
+  }
+
+  // Esc / Cancel: with banked lines, drop just the current un-banked attempt and
+  // keep listening so you can re-say that sentence. Otherwise cancel the recording.
+  function redoOrCancel(btn, transcriptEl, cancelBtn) {
+    if (savedLines.length) {
+      finals = [];
+      renderTranscript(transcriptEl, '');
+    } else {
+      stopRecording(false, btn, transcriptEl, cancelBtn);
+    }
+  }
 
   async function getSpeechConfig() {
     const res = await fetch('/speech-token');
@@ -101,10 +132,13 @@
 
   function resetMicButton(btn, cancelBtn) {
     recognizing = false;
+    savedLines = [];
     btn.classList.remove('listening');
     btn.textContent = 'Tap or press Space';
     btn.disabled = false;
-    if (cancelBtn) cancelBtn.classList.add('hidden');
+    if (cancelBtn) { cancelBtn.classList.add('hidden'); cancelBtn.textContent = 'Cancel (Esc)'; }
+    const saveBtn = document.querySelector('[data-save]');
+    if (saveBtn) saveBtn.classList.add('hidden');
   }
 
   // Tear down the recognizer. If send=true, submit what was heard; if false,
@@ -113,8 +147,9 @@
     btn.disabled = true;
     const done = () => {
       if (recognizer) { recognizer.close(); recognizer = null; }
+      // Read banked + un-banked BEFORE reset (reset clears `savedLines`).
+      const text = [...savedLines, finals.join(' ')].join(' ').replace(/\s+/g, ' ').trim();
       resetMicButton(btn, cancelBtn);
-      const text = finals.join(' ').replace(/\s+/g, ' ').trim();
       finals = [];
       if (!send) { transcriptEl.textContent = ''; return; }
       if (!text) { transcriptEl.textContent = '(nothing heard — try again)'; return; }
@@ -141,10 +176,13 @@
       return;
     }
     finals = [];
+    savedLines = [];
     recognizing = true;
     btn.classList.add('listening');
-    btn.textContent = 'Listening… (Space/tap to stop · Esc to cancel)';
-    if (cancelBtn) cancelBtn.classList.remove('hidden');
+    btn.textContent = 'Listening… — Enter to send · Space for next line · Esc to redo';
+    if (cancelBtn) { cancelBtn.classList.remove('hidden'); cancelBtn.textContent = 'Cancel (Esc)'; }
+    const saveBtn = document.querySelector('[data-save]');
+    if (saveBtn) saveBtn.classList.remove('hidden');
     transcriptEl.textContent = '';
 
     const audioCfg = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
@@ -152,13 +190,13 @@
 
     // Live interim text while you speak.
     recognizer.recognizing = (_s, e) => {
-      transcriptEl.textContent = (finals.join(' ') + ' ' + (e.result.text || '')).trim();
+      renderTranscript(transcriptEl, e.result.text || '');
     };
     // A finalized segment (after each natural pause) — keep going, don't stop.
     recognizer.recognized = (_s, e) => {
       if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech && e.result.text) {
         finals.push(e.result.text);
-        transcriptEl.textContent = finals.join(' ');
+        renderTranscript(transcriptEl, '');
       }
     };
     recognizer.canceled = (_s, e) => {
@@ -181,10 +219,12 @@
 
     const recordBtn = composer.querySelector('[data-record]');
     const cancelBtn = composer.querySelector('[data-cancel]');
+    const saveBtn = composer.querySelector('[data-save]');
     const transcriptEl = composer.querySelector('[data-transcript]');
 
     if (recordBtn) recordBtn.addEventListener('click', () => toggleRecording(recordBtn, transcriptEl, cancelBtn));
-    if (cancelBtn) cancelBtn.addEventListener('click', () => stopRecording(false, recordBtn, transcriptEl, cancelBtn));
+    if (saveBtn) saveBtn.addEventListener('click', () => saveProgress(transcriptEl, cancelBtn));
+    if (cancelBtn) cancelBtn.addEventListener('click', () => redoOrCancel(recordBtn, transcriptEl, cancelBtn));
 
     wireCoach();
     speakLatestTutor(); // speak Saar's opening line
@@ -239,10 +279,14 @@
     if (!recordBtn) return;
     if (e.code === 'Space' && !typing) {
       e.preventDefault(); // also stops a focused button from double-triggering
-      toggleRecording(recordBtn, transcriptEl, cancelBtn);
+      if (recognizing) saveProgress(transcriptEl, cancelBtn); // bank this sentence, start a new line
+      else toggleRecording(recordBtn, transcriptEl, cancelBtn); // start listening
+    } else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && recognizing && !typing) {
+      e.preventDefault(); // send everything; don't let a focused button double-fire
+      stopRecording(true, recordBtn, transcriptEl, cancelBtn);
     } else if (e.code === 'Escape' && recognizing) {
       e.preventDefault();
-      stopRecording(false, recordBtn, transcriptEl, cancelBtn);
+      redoOrCancel(recordBtn, transcriptEl, cancelBtn);
     }
   });
 

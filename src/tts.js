@@ -3,6 +3,8 @@
 const KEY = process.env.AZURE_SPEECH_KEY?.trim();
 const REGION = process.env.AZURE_SPEECH_REGION?.trim() || 'westeurope';
 const VOICE = process.env.AZURE_SPEECH_VOICE?.trim() || 'nl-NL-ColetteNeural';
+// A gentle default slowdown — easier for a beginner to follow. Override via env.
+const RATE = process.env.AZURE_SPEECH_RATE?.trim() || '-12%';
 
 export const ttsAvailable = Boolean(KEY);
 
@@ -13,7 +15,8 @@ function escapeXml(s) {
 
 function ssml(text) {
   const lang = VOICE.slice(0, 5); // e.g. nl-NL
-  return `<speak version="1.0" xml:lang="${lang}"><voice name="${VOICE}">${escapeXml(text)}</voice></speak>`;
+  return `<speak version="1.0" xml:lang="${lang}"><voice name="${VOICE}">` +
+    `<prosody rate="${escapeXml(RATE)}">${escapeXml(text)}</prosody></voice></speak>`;
 }
 
 // Exchange the subscription key for a short-lived (10 min) auth token so the
