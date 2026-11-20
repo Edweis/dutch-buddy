@@ -1,0 +1,17 @@
+{
+  "name": "dutch-buddy",
+  "version": "0.1.0",
+  "description": "An Anki-style Dutch tutor: read along while the app speaks, learn words most-common-first with spaced repetition.",
+  "type": "module",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pug": "^3.0.3"
+  }
+}

@@ -1,0 +1,39 @@
+extends layout
+
+block content
+  section
+    h1 Your progress
+    .stats
+      .stat
+        .num= stats.introduced
+        .label started
+      .stat
+        .num= stats.known
+        .label known
+      .stat
+        .num= stats.mature
+        .label mature
+      .stat
+        .num= stats.due
+        .label due now
+
+    if words.length === 0
+      p.hint No words yet — start a session to begin learning!
+    else
+      table.words
+        thead
+          tr
+            th #
+            th Dutch
+            th English
+            th Status
+            th Reps
+        tbody
+          each w in words
+            tr(class=w.status)
+              td= w.rank
+              td.nl= w.nl
+              td= w.en
+              td
+                span.badge(class=w.status)= w.status
+              td= w.reps

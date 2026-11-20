@@ -1,0 +1,21 @@
+extends layout
+
+block content
+  section.chat-wrap
+    #chat.chat
+      if error
+        .bubble.error
+          p Couldn't start the conversation:
+          p.err= error
+      else
+        include partials/bubble-tutor
+
+    #composer.composer(class=error ? 'hidden' : '')
+      p.transcript(data-transcript)
+      .controls
+        button.record(type="button", data-record) 🎙️ Tap to speak
+        button.ghost(type="button", data-send-text) ⌨️ Type instead
+      form.type-form.hidden(data-type-form)
+        input(type="text", name="typed", placeholder="Type your Dutch reply…", autocomplete="off")
+        button.ghost(type="submit") Send
+    a.hint(href="/progress") See your words →

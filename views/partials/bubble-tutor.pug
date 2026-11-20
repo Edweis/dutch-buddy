@@ -1,0 +1,9 @@
+.bubble.tutor(data-nl=turn.nl)
+  .who 🧡 Buddy
+  p.nl= turn.nl
+  p.en= turn.en
+  if turn.note
+    p.note-tip 💡 #{turn.note}
+  .bubble-controls
+    button.icon(type="button", data-speak) 🔊
+    button.icon(type="button", data-speak-slow) 🐢
