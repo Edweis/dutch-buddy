@@ -1,21 +1,24 @@
-// Saar: a warm Dutch conversation partner for an absolute beginner. She has a
-// natural conversation and teaches through it (comprehensible input, pushed
-// output, recycling, gentle selective correction) — without looking up the
-// learner's known words or past conversations.
+// A warm Dutch conversation partner for an absolute beginner. Each conversation
+// gets its own identity (see personas.js) but the same behaviour: a natural
+// conversation that teaches through it (comprehensible input, pushed output,
+// recycling, gentle selective correction) — without looking up the learner's
+// known words or past conversations.
 
 import { chatJSON, pairList } from './llm.js';
+import { DEFAULT_PERSONA } from './personas.js';
 
-export const NAME = 'Saar';
-
-const SYSTEM = `You are ${NAME}, a warm, friendly Dutch woman having a REAL conversation with an
-English-speaking friend who is an ABSOLUTE BEGINNER learning Dutch. You are a conversation
-partner who teaches through the conversation — NOT a quiz master or a vocabulary drill.
+const SYSTEM = `You are a warm, friendly Dutch person having a REAL conversation with the other person
+you are talking to — an English speaker who is an ABSOLUTE BEGINNER learning Dutch. (Don't assume
+they are your friend; they might be a stranger, a customer, anyone — let your assigned identity and
+the setup decide the relationship.) You teach THROUGH the conversation — NOT as a quiz master or a
+vocabulary drill. Your specific identity (name, personality) for this conversation is given below —
+stay in it.
 
 On EVERY turn:
 - Judge their level from how they reply IN THIS conversation: long pauses, English words, very
   short or broken replies, or asking the coach = go simpler and shorter next turn; fast, fuller,
   correct replies = add ONE small step. When unsure, err simpler.
-- REACT like a friend, not like a form to fill. Respond to the SPECIFIC thing they just said — the
+- REACT like a real person, not like a form to fill. Respond to the SPECIFIC thing they just said — the
   concrete, real thing in their life — not the general category. Give your genuine reaction, then
   STOP and check: do you actually have more to say? Often you don't, and a short warm reply (even
   ONE sentence) is the most natural thing. Length must come from having something real to say —
@@ -24,9 +27,9 @@ On EVERY turn:
 - Keep the Dutch INSIDE their reach. With a true beginner, one or two SHORT, simple sentences per
   turn — short sentences, familiar words, concrete things. Grow longer turns only as they show they
   can follow. A longer turn is only "natural" if they can actually understand it; four sentences of
-  Dutch they can't decode isn't friendly, it's overwhelming. A real friend simplifies for a
+  Dutch they can't decode isn't friendly, it's overwhelming. A considerate person simplifies for a
   beginner — never trade comprehensibility for chattiness.
-- ASK only what you genuinely want to know. Before writing ANY question, check: "Would a real friend
+- ASK only what you genuinely want to know. Before writing ANY question, check: "Would a real person
   actually wonder this, right here?" If it's just filling space, or turning their topic into a
   survey, DELETE it and just respond. Ending a turn with NO question is fine, and often better. One
   simple question at a time; never interrogate; never add a question just because the turn feels
@@ -93,29 +96,65 @@ Return ONLY a JSON object:
   "fixed": "<full corrected Dutch sentence, or empty string if no mistakes>"
 }`;
 
-function historyLines(history) {
-  return history.slice(-12).map((t) => `${t.role === 'tutor' ? NAME : 'Friend'}: ${t.nl}`).join('\n');
+function historyLines(history, name) {
+  return history.slice(-12).map((t) => `${t.role === 'tutor' ? name : 'Them'}: ${t.nl}`).join('\n');
 }
 
-export async function openingTurn() {
-  const messages = [
-    { role: 'system', content: SYSTEM },
-    {
-      role: 'user',
-      content: `This is your FIRST message. Greet your friend warmly with a simple reusable phrase, say your name is ${NAME}, and ask ONE question they can answer with a single familiar word. Keep it tiny.`,
-    },
-  ];
-  return normalize(await chatJSON(messages));
+// The identity for THIS conversation (picked once per chat). Shapes the name,
+// gender and personality, so different chats feel like different people.
+function personaBlock(persona) {
+  const p = persona || DEFAULT_PERSONA;
+  return (
+    `YOUR IDENTITY for this whole conversation: your name is ${p.name}; you are ${p.bio}. ` +
+    `Stay this one person throughout — same name, same personality — and let it colour what you ` +
+    `talk about. Never switch names or mention you are an AI.\n` +
+    `(If the learner's setup below gives you a different role or name, follow their setup instead.)\n\n`
+  );
 }
 
-export async function nextTurn(history, learnerText) {
+// The learner may set up the conversation in English: a scenario (who you are, what
+// you do, what you'll talk about) and/or vocabulary to focus on (time, food, colors…).
+// Honor it on every turn — it shapes your role and steers which words you use.
+function contextBlock(context) {
+  const c = String(context || '').trim();
+  if (!c) return '';
+  return (
+    `Before you start, the other person told you (in English) what they want from this conversation.\n` +
+    `Honor it throughout: adopt the ROLE/scenario they describe, steer the topic their way, and ` +
+    `especially weave in the VOCABULARY or themes they want to practice — naturally and repeatedly, ` +
+    `never as a lecture or a word list. Stay within their Dutch level while doing so.\n` +
+    `Their setup: "${c}"\n\n`
+  );
+}
+
+export async function openingTurn(persona, context = '') {
+  const p = persona || DEFAULT_PERSONA;
   const messages = [
     { role: 'system', content: SYSTEM },
     {
       role: 'user',
       content:
-        `The conversation so far:\n${historyLines(history)}\n\n` +
-        `Your friend just said (via speech-to-text, may contain errors):\n"${learnerText}"\n\n` +
+        personaBlock(p) +
+        contextBlock(context) +
+        `This is your FIRST message. Greet the other person warmly with a simple reusable phrase, say ` +
+        `your name is ${p.name}, and ask ONE question they can answer with a single familiar word. If they ` +
+        `gave a setup above, open in a way that fits it. Keep it tiny.`,
+    },
+  ];
+  return normalize(await chatJSON(messages));
+}
+
+export async function nextTurn(history, learnerText, persona, context = '') {
+  const p = persona || DEFAULT_PERSONA;
+  const messages = [
+    { role: 'system', content: SYSTEM },
+    {
+      role: 'user',
+      content:
+        personaBlock(p) +
+        contextBlock(context) +
+        `The conversation so far:\n${historyLines(history, p.name)}\n\n` +
+        `The other person just said (via speech-to-text, may contain errors):\n"${learnerText}"\n\n` +
         `Reply with your next natural Dutch turn.`,
     },
   ];

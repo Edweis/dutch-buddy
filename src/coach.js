@@ -38,9 +38,9 @@ Return ONLY a JSON object:
   "examples": [{"nl": "<Dutch phrase>", "en": "<English translation>"}]
 }`;
 
-export async function coachAnswer(question, history) {
+export async function coachAnswer(question, history, tutorName = 'the tutor') {
   const ctx = history.slice(-8)
-    .map((t) => `${t.role === 'tutor' ? 'Saar' : 'Student'}: ${t.nl}`)
+    .map((t) => `${t.role === 'tutor' ? tutorName : 'Student'}: ${t.nl}`)
     .join('\n');
   const out = await chatJSON([
     { role: 'system', content: SYSTEM },

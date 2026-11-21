@@ -1,5 +1,7 @@
 // Azure Speech text-to-speech. Returns MP3 audio bytes for Dutch text.
 
+import { VOICES } from './personas.js';
+
 const KEY = process.env.AZURE_SPEECH_KEY?.trim();
 const REGION = process.env.AZURE_SPEECH_REGION?.trim() || 'westeurope';
 const VOICE = process.env.AZURE_SPEECH_VOICE?.trim() || 'nl-NL-ColetteNeural';
@@ -8,14 +10,21 @@ const RATE = process.env.AZURE_SPEECH_RATE?.trim() || '-12%';
 
 export const ttsAvailable = Boolean(KEY);
 
+// Only speak with a known persona voice (or the configured default) — never an
+// arbitrary caller-supplied voice name.
+function resolveVoice(voice) {
+  return voice && VOICES.has(voice) ? voice : VOICE;
+}
+
 function escapeXml(s) {
   return String(s).replace(/[<>&'"]/g, (c) =>
     ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
 }
 
-function ssml(text) {
-  const lang = VOICE.slice(0, 5); // e.g. nl-NL
-  return `<speak version="1.0" xml:lang="${lang}"><voice name="${VOICE}">` +
+function ssml(text, voice) {
+  const v = resolveVoice(voice);
+  const lang = v.slice(0, 5); // e.g. nl-NL
+  return `<speak version="1.0" xml:lang="${lang}"><voice name="${escapeXml(v)}">` +
     `<prosody rate="${escapeXml(RATE)}">${escapeXml(text)}</prosody></voice></speak>`;
 }
 
@@ -55,7 +64,7 @@ export async function issueToken() {
   throw lastErr;
 }
 
-export async function synthesize(text) {
+export async function synthesize(text, voice) {
   if (!KEY) throw new Error('AZURE_SPEECH_KEY not set');
   const url = `https://${REGION}.tts.speech.microsoft.com/cognitiveservices/v1`;
   const res = await fetch(url, {
@@ -67,7 +76,7 @@ export async function synthesize(text) {
       'X-Microsoft-OutputFormat': 'audio-48khz-192kbitrate-mono-mp3',
       'User-Agent': 'dutch-buddy',
     },
-    body: ssml(text),
+    body: ssml(text, voice),
   });
   if (!res.ok) throw new Error(`Azure TTS ${res.status}: ${await res.text()}`);
   return Buffer.from(await res.arrayBuffer());

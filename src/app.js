@@ -9,8 +9,9 @@ import { openingTurn, nextTurn } from './tutor.js';
 import { coachAnswer } from './coach.js';
 import {
   createConversation, conversationExists, addMessage, getMessages, getHistory, listConversations,
-  setMessageNote, addCoachMessage, getCoachMessages,
+  setMessageNote, addCoachMessage, getCoachMessages, getConversationContext, getConversationPersona,
 } from './conversations.js';
+import { pickPersona } from './personas.js';
 import { llmAvailable, llmStatus } from './llm.js';
 import { synthesize, issueToken, ttsAvailable } from './tts.js';
 
@@ -58,14 +59,18 @@ app.get('/conversation/:id', (req, res) => {
     cid: id,
     messages: getMessages(id),
     coachMessages: getCoachMessages(id),
+    context: getConversationContext(id),
+    persona: getConversationPersona(id),
     bodyClass: 'wide',
   });
 });
 
 app.post('/conversation/start', async (req, res) => {
-  const cid = createConversation();
+  const context = (req.body.context || '').toString().trim().slice(0, 1000);
+  const persona = pickPersona();
+  const cid = createConversation(context, persona);
   try {
-    const turn = await openingTurn();
+    const turn = await openingTurn(persona, context);
     addMessage(cid, 'tutor', { nl: turn.nl, en: turn.en, gloss: turn.glossary });
   } catch (err) {
     console.error('[start]', err.message); // land on the page anyway; it'll surface on first reply
@@ -84,14 +89,15 @@ app.post('/conversation/:id/reply', async (req, res) => {
     learnerMsgId = addMessage(cid, 'learner', { nl: learner });
     reinforceFromText(learner);
   }
+  const persona = getConversationPersona(cid);
   try {
-    const turn = await nextTurn(getHistory(cid), learner);
+    const turn = await nextTurn(getHistory(cid), learner, persona, getConversationContext(cid));
     // The correction is about what the learner said -> store it on their message.
     if (learnerMsgId && (turn.mistakes.length || turn.fixed)) {
       setMessageNote(learnerMsgId, JSON.stringify({ mistakes: turn.mistakes, fixed: turn.fixed }));
     }
     addMessage(cid, 'tutor', { nl: turn.nl, en: turn.en, gloss: turn.glossary });
-    res.render('partials/bubble-tutor', { turn });
+    res.render('partials/bubble-tutor', { turn, tutorName: persona.name });
   } catch (err) {
     res.status(200).render('partials/bubble-error', { message: err.message });
   }
@@ -104,8 +110,9 @@ app.post('/coach', async (req, res) => {
   if (!question) return res.status(400).end();
   const valid = cid && conversationExists(cid);
   const history = valid ? getHistory(cid) : [];
+  const tutorName = valid ? getConversationPersona(cid).name : 'the tutor';
   try {
-    const out = await coachAnswer(question, history);
+    const out = await coachAnswer(question, history, tutorName);
     if (valid) addCoachMessage(cid, { question, answer: out.answer, examples: out.examples });
     res.render('partials/coach-answer', { question, ...out });
   } catch (err) {
@@ -117,8 +124,9 @@ app.post('/coach', async (req, res) => {
 app.get('/tts', async (req, res) => {
   const text = (req.query.text || '').toString().slice(0, 500);
   if (!text) return res.status(400).send('missing text');
+  const voice = (req.query.voice || '').toString();
   try {
-    const mp3 = await synthesize(text);
+    const mp3 = await synthesize(text, voice);
     res.set('Content-Type', 'audio/mpeg');
     res.set('Cache-Control', 'public, max-age=86400');
     res.send(mp3);
@@ -140,7 +148,7 @@ app.get('/speech-token', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Dutch Buddy on http://localhost:${PORT}`);
+  console.log(`Praatmaatje on http://localhost:${PORT}`);
   console.log(`  LLM:  ${llmStatus()}`);
   console.log(`  Voice: ${ttsAvailable ? 'Azure Speech (TTS + STT)' : 'NOT configured'}`);
 });

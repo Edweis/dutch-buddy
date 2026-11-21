@@ -23,11 +23,18 @@
 
   // Play Dutch text. Always starts from the beginning; `btn` (if given) shows a
   // pause icon while playing and reverts when it ends or is stopped.
+  // Speak in this conversation's assigned voice (data-voice on #chat), if any.
+  function ttsUrl(text) {
+    const chat = document.getElementById('chat');
+    const voice = chat && chat.getAttribute('data-voice');
+    return `/tts?text=${encodeURIComponent(text)}` + (voice ? `&voice=${encodeURIComponent(voice)}` : '');
+  }
+
   function playTTS(text, btn) {
     if (!text) return;
     stopPlayback();
     try {
-      const audio = new Audio(`/tts?text=${encodeURIComponent(text)}`);
+      const audio = new Audio(ttsUrl(text));
       currentAudio = audio;
       currentBtn = btn || null;
       setPlayIcon(currentBtn, true);
@@ -56,7 +63,6 @@
     const tmpl = document.getElementById('tmpl-learner');
     if (!chat || !tmpl) return;
     const bubble = tmpl.content.firstElementChild.cloneNode(true);
-    bubble.setAttribute('data-nl', text);
     bubble.querySelector('.nl').textContent = text;
     chat.appendChild(bubble);
     scrollChat();
@@ -110,6 +116,7 @@
   let finals = [];        // finalized segments on the current line (not yet banked)
   let savedLines = [];    // sentences banked with Space, each shown on its own line
   let hasInterim = false; // an utterance is mid-flight (live text shown, not yet finalized)
+  let interimText = '';   // the latest live (not-yet-finalized) words, so Space can bank them
   let abortUtterance = false; // swallow the next final result (its utterance was cancelled)
 
   // Render banked lines stacked, with the current line (finals + live interim) last.
@@ -119,12 +126,17 @@
   }
 
   // Space: bank the current sentence and start the next one on a new line below.
+  // Works even mid-utterance (while the live interim text is still showing) — we bank
+  // what's on screen and swallow the pending final so it can't re-add the same words.
   function saveProgress(transcriptEl, cancelBtn) {
     if (!recognizing) return;
-    const current = finals.join(' ').replace(/\s+/g, ' ').trim();
-    if (!current) return; // nothing finalized to bank yet
+    const current = [finals.join(' '), interimText].join(' ').replace(/\s+/g, ' ').trim();
+    if (!current) return; // nothing heard yet to bank
     savedLines.push(current);
     finals = [];
+    if (hasInterim) abortUtterance = true; // the in-flight final was just banked — drop it
+    interimText = '';
+    hasInterim = false;
     renderTranscript(transcriptEl, '');
     if (cancelBtn) cancelBtn.textContent = 'Redo sentence';
     transcriptEl.classList.add('saved'); // brief green confirmation
@@ -140,6 +152,7 @@
     if (finals.length || hasInterim) {
       if (hasInterim) abortUtterance = true; // the in-flight final belongs to a cancelled sentence
       finals = [];
+      interimText = '';
       renderTranscript(transcriptEl, '');
     } else if (savedLines.length) {
       savedLines.pop();
@@ -170,6 +183,7 @@
     recognizing = false;
     savedLines = [];
     hasInterim = false;
+    interimText = '';
     abortUtterance = false;
     btn.classList.remove('listening');
     btn.textContent = 'Tap to speak';
@@ -185,8 +199,8 @@
     btn.disabled = true;
     const done = () => {
       if (recognizer) { recognizer.close(); recognizer = null; }
-      // Read banked + un-banked BEFORE reset (reset clears `savedLines`).
-      const text = [...savedLines, finals.join(' ')].join(' ').replace(/\s+/g, ' ').trim();
+      // Read banked + un-banked (incl. live interim) BEFORE reset (reset clears `savedLines`).
+      const text = [...savedLines, finals.join(' '), interimText].join(' ').replace(/\s+/g, ' ').trim();
       resetMicButton(btn, cancelBtn);
       finals = [];
       transcriptEl.textContent = '';
@@ -217,6 +231,7 @@
     finals = [];
     savedLines = [];
     hasInterim = false;
+    interimText = '';
     abortUtterance = false;
     recognizing = true;
     btn.classList.add('listening');
@@ -243,16 +258,18 @@
 
     // Live interim text while you speak.
     recognizer.recognizing = (_s, e) => {
-      if (abortUtterance) return; // ignore the tail of a cancelled utterance
+      if (abortUtterance) return; // ignore the tail of a cancelled/banked utterance
+      interimText = e.result.text || '';
       hasInterim = !!(e.result.text && e.result.text.trim());
-      renderTranscript(transcriptEl, e.result.text || '');
+      renderTranscript(transcriptEl, interimText);
     };
     // A finalized segment (after each natural pause) — keep going, don't stop.
     recognizer.recognized = (_s, e) => {
-      // If this utterance was cancelled (Esc between interim and final), swallow its
-      // final result so the sentence doesn't re-appear, then resume normally.
-      if (abortUtterance) { abortUtterance = false; hasInterim = false; renderTranscript(transcriptEl, ''); return; }
+      // If this utterance was cancelled (Esc) or already banked (Space) between interim
+      // and final, swallow its final so the sentence doesn't re-appear, then resume.
+      if (abortUtterance) { abortUtterance = false; hasInterim = false; interimText = ''; renderTranscript(transcriptEl, ''); return; }
       hasInterim = false;
+      interimText = '';
       if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech && e.result.text) {
         finals.push(e.result.text);
         renderTranscript(transcriptEl, '');

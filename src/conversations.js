@@ -1,8 +1,11 @@
 // Persistence for conversations so they can be listed, reopened, and continued.
 import { db } from './db.js';
+import { DEFAULT_PERSONA } from './personas.js';
 
-const insertConvo = db.prepare('INSERT INTO conversations (created_at, updated_at) VALUES (?, ?)');
+const insertConvo = db.prepare('INSERT INTO conversations (created_at, updated_at, context, persona) VALUES (?, ?, ?, ?)');
 const touchConvo = db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?');
+const selectContext = db.prepare('SELECT context FROM conversations WHERE id = ?');
+const selectPersona = db.prepare('SELECT persona FROM conversations WHERE id = ?');
 const insertMessage = db.prepare(`
   INSERT INTO messages (conversation_id, role, nl, en, note, gloss, created_at)
   VALUES (@conversation_id, @role, @nl, @en, @note, @gloss, @created_at)
@@ -10,13 +13,33 @@ const insertMessage = db.prepare(`
 const selectMessages = db.prepare('SELECT role, nl, en, note, gloss FROM messages WHERE conversation_id = ? ORDER BY id ASC');
 const convoExists = db.prepare('SELECT 1 FROM conversations WHERE id = ?');
 
-export function createConversation() {
+export function createConversation(context = '', persona = null) {
   const now = Date.now();
-  return insertConvo.run(now, now).lastInsertRowid;
+  return insertConvo.run(
+    now, now,
+    context ? String(context) : null,
+    persona ? JSON.stringify(persona) : null,
+  ).lastInsertRowid;
 }
 
 export function conversationExists(id) {
   return Boolean(convoExists.get(id));
+}
+
+// The optional English setup the learner gave when starting (scenario + vocab focus).
+export function getConversationContext(id) {
+  const row = selectContext.get(id);
+  return (row && row.context) || '';
+}
+
+// The identity assigned to this conversation (name, personality, voice). Falls back
+// to the default persona for chats created before personas existed.
+export function getConversationPersona(id) {
+  const row = selectPersona.get(id);
+  if (row && row.persona) {
+    try { return JSON.parse(row.persona); } catch (_) { /* fall through */ }
+  }
+  return DEFAULT_PERSONA;
 }
 
 const updateMsgNote = db.prepare('UPDATE messages SET note = ? WHERE id = ?');

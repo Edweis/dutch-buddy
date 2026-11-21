@@ -58,6 +58,22 @@ button { font: inherit; cursor: pointer; border-radius: 10px; border: none; }
 .ghost:hover { background: #e7e7e7; }
 .hint { color: var(--muted); font-size: 0.9rem; margin-top: 1rem; }
 
+.start-form { margin-top: 1.5rem; }
+.setup-label { display: block; font-weight: 600; margin-bottom: 0.4rem; }
+.setup-label span { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
+.setup-input {
+  width: 100%; padding: 0.7rem 0.9rem; border: 1px solid var(--line); border-radius: 10px;
+  font: inherit; resize: vertical; margin-bottom: 0.8rem; background: var(--card); color: var(--ink);
+}
+.setup-input:focus { outline: none; border-color: var(--orange); }
+
+.setup-note {
+  background: #fff4ec; border: 1px solid #ffd9c2; border-radius: 10px;
+  padding: 0.5rem 0.8rem; margin-bottom: 0.8rem; font-size: 0.9rem;
+}
+.setup-note summary { cursor: pointer; font-weight: 600; color: var(--orange-dark); }
+.setup-note p { margin: 0.4rem 0 0; color: var(--ink); }
+
 .badge {
   font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;
   background: #fff1e9; color: var(--orange-dark); padding: 0.2rem 0.55rem; border-radius: 999px; font-weight: 600;
@@ -104,7 +120,8 @@ table.words td.nl { font-weight: 600; }
 .bubble .note-tip { margin: 0.5rem 0 0; font-size: 0.85rem; color: var(--orange-dark); background: #fff6f0; padding: 0.5rem 0.7rem; border-radius: 8px; }
 .note-tip ul.mistakes { margin: 0; padding-left: 1.1rem; }
 .note-tip ul.mistakes li { margin: 0.1rem 0; }
-.note-tip .fixed { margin-top: 0.35rem; padding-top: 0.35rem; border-top: 1px solid #ffe0cc; color: var(--ink); }
+.note-tip .fixed { margin-top: 0.35rem; padding-top: 0.35rem; border-top: 1px solid #ffe0cc; color: var(--ink); display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+.note-tip .fixed .icon { margin-left: auto; flex-shrink: 0; }
 .note-tip .fixed-label { color: var(--muted); font-weight: 600; font-size: 0.78rem; margin-right: 0.35rem; }
 .note-tip .fixed-text { font-weight: 600; }
 .bubble .err { font-family: ui-monospace, monospace; font-size: 0.8rem; word-break: break-word; }

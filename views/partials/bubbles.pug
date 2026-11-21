@@ -10,16 +10,14 @@ mixin speak-btn
 //- One chat bubble, tutor or learner, driven by a message object {role, nl, en, note}.
 mixin bubble(m)
   if m.role === 'learner'
-    .bubble.learner(data-nl=m.nl)
-      .bubble-head
-        span.who You
-        +speak-btn
+    .bubble.learner
+      span.who You
       p.nl= m.nl
       +correction(m.correction)
   else
     .bubble.tutor(data-nl=m.nl)
       .bubble-head
-        span.who Saar
+        span.who= (typeof tutorName !== 'undefined' && tutorName) ? tutorName : 'Saar'
         +speak-btn
       //- Show each sentence on its own line for easier reading (data-nl keeps the
       //- full text so text-to-speech still reads it as one piece).
@@ -45,9 +43,10 @@ mixin correction(c)
           each mk in c.mistakes
             li= mk
       if c.fixed
-        .fixed
+        .fixed(data-nl=c.fixed)
           span.fixed-label Better:
           span.fixed-text= c.fixed
+          +speak-btn
 
 //- One coach Q&A entry (used live and when reloading saved history).
 mixin coachMsg(c)

@@ -23,7 +23,7 @@ export async function chatJSON(messages) {
       Authorization: `Bearer ${OR_KEY}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'http://localhost',
-      'X-Title': 'Dutch Buddy',
+      'X-Title': 'Praatmaatje',
     },
     body: JSON.stringify({
       model: OR_MODEL,

@@ -47,7 +47,9 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS conversations (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    context    TEXT,                             -- optional English setup: scenario + vocab focus
+    persona    TEXT                              -- JSON {name, gender, voice, bio} for this chat
   );
   CREATE TABLE IF NOT EXISTS messages (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,3 +88,8 @@ seedWords(WORDS);
 // Migration: add messages.gloss for databases created before it existed.
 const msgCols = db.prepare('PRAGMA table_info(messages)').all().map((c) => c.name);
 if (!msgCols.includes('gloss')) db.exec('ALTER TABLE messages ADD COLUMN gloss TEXT');
+
+// Migration: add conversations.context / .persona for databases created before they existed.
+const convoCols = db.prepare('PRAGMA table_info(conversations)').all().map((c) => c.name);
+if (!convoCols.includes('context')) db.exec('ALTER TABLE conversations ADD COLUMN context TEXT');
+if (!convoCols.includes('persona')) db.exec('ALTER TABLE conversations ADD COLUMN persona TEXT');

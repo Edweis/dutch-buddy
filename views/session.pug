@@ -2,12 +2,17 @@ extends layout
 include partials/bubbles
 
 block content
+  - var tutorName = (persona && persona.name) ? persona.name : 'Saar'
   .session-grid
     .chat-col
-      #chat.chat(data-cid=cid)
+      if context
+        details.setup-note
+          summary Focus for this chat
+          p= context
+      #chat.chat(data-cid=cid, data-voice=(persona && persona.voice) ? persona.voice : '')
         if error
           .bubble.error
-            p Saar couldn't start the conversation:
+            p= tutorName + " couldn't start the conversation:"
             p.err= error
         else
           each m in messages

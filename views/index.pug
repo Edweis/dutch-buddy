@@ -2,8 +2,8 @@ extends layout
 
 block content
   section.hero
-    h1 Praat met Saar
-    p.sub Have a real Dutch conversation. Saar speaks and writes simple Dutch, you read along and answer out loud — and the words you use stick, Anki-style.
+    h1 Praatmaatje
+    p.sub Have a real Dutch conversation. A friendly Dutch speaker talks and writes simple Dutch, you read along and answer out loud, and the words you use stick, Anki-style.
 
     - var missing = []
     if !status.llm
@@ -29,7 +29,9 @@ block content
       .num= stats.mature
       .label mature
 
-  form(hx-post="/conversation/start", hx-target="main.container", hx-swap="innerHTML")
+  form.start-form(hx-post="/conversation/start", hx-target="main.container", hx-swap="innerHTML")
+    label.setup-label(for="context") What do you want to work on? <span>(optional)</span>
+    textarea#context.setup-input(name="context", rows="3", placeholder="e.g. You're a waiter at a café and I'm ordering lunch — focus on food, numbers and ordering. Or: let's practice telling the time, days of the week and dates.")
     button.primary(type="submit") Start talking →
 
-  p.hint Use <strong>Chrome</strong> and allow the microphone. Saar speaks in Dutch; tap 🎙️ to reply out loud.
+  p.hint Allow the microphone when asked. They speak in Dutch; tap 🎙️ to reply out loud.
