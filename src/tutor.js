@@ -104,42 +104,48 @@ function historyLines(history, name) {
 // gender and personality, so different chats feel like different people.
 function personaBlock(persona) {
   const p = persona || DEFAULT_PERSONA;
+  const manner = p.manner ? ` You come across as ${p.manner}.` : '';
   return (
-    `YOUR IDENTITY for this whole conversation: your name is ${p.name}; you are ${p.bio}. ` +
-    `Stay this one person throughout — same name, same personality — and let it colour what you ` +
-    `talk about. Never switch names or mention you are an AI.\n` +
-    `(If the learner's setup below gives you a different role or name, follow their setup instead.)\n\n`
+    `YOUR NAME in this conversation is ${p.name}.${manner} Keep this name throughout; never switch it ` +
+    `or mention being an AI. WHO you are — your role and your relationship to the other person — is set ` +
+    `by the setup below. If there is no setup, you are simply a friendly Dutch person making ` +
+    `conversation. Do NOT invent a backstory, job or hobbies beyond what the setup gives you.\n\n`
   );
 }
 
 // The learner may set up the conversation in English: a scenario (who you are, what
 // you do, what you'll talk about) and/or vocabulary to focus on (time, food, colors…).
-// Honor it on every turn — it shapes your role and steers which words you use.
+// When present, it is the single most important instruction — you ARE in that
+// situation and play your part for real, on every turn.
 function contextBlock(context) {
   const c = String(context || '').trim();
   if (!c) return '';
   return (
-    `Before you start, the other person told you (in English) what they want from this conversation.\n` +
-    `Honor it throughout: adopt the ROLE/scenario they describe, steer the topic their way, and ` +
-    `especially weave in the VOCABULARY or themes they want to practice — naturally and repeatedly, ` +
-    `never as a lecture or a word list. Stay within their Dutch level while doing so.\n` +
+    `THE OTHER PERSON SET UP THIS CONVERSATION (in English). This is your most important instruction: ` +
+    `treat it as the situation you are actually in right now, and genuinely play your part in it.\n` +
+    `- Step straight into that scene and STAY in it the whole conversation — every turn belongs to this ` +
+    `situation; don't drift into unrelated small talk or your own hobbies.\n` +
+    `- Say and do what someone in your role would really say and do at this moment, and respond to what ` +
+    `they say the way your role actually would.\n` +
+    `- Weave in any vocabulary or themes they want to practice, naturally and repeatedly — never as a ` +
+    `lecture or a word list — and stay within their Dutch level.\n` +
     `Their setup: "${c}"\n\n`
   );
 }
 
 export async function openingTurn(persona, context = '') {
   const p = persona || DEFAULT_PERSONA;
+  const opening = context
+    ? `This is your FIRST line, and you are ALREADY inside the situation from the setup above. Open it ` +
+      `for real: make the natural first move your role would make at this exact moment — what someone in ` +
+      `your position would genuinely say as the scene begins (not generic small talk, not your own ` +
+      `hobbies). You may give your name briefly if it fits. Keep it to one or two short, simple Dutch ` +
+      `sentences they can follow, and leave them an easy opening to respond.`
+    : `This is your FIRST message. Greet the other person warmly with a simple reusable phrase, say your ` +
+      `name is ${p.name}, and ask ONE question they can answer with a single familiar word. Keep it tiny.`;
   const messages = [
     { role: 'system', content: SYSTEM },
-    {
-      role: 'user',
-      content:
-        personaBlock(p) +
-        contextBlock(context) +
-        `This is your FIRST message. Greet the other person warmly with a simple reusable phrase, say ` +
-        `your name is ${p.name}, and ask ONE question they can answer with a single familiar word. If they ` +
-        `gave a setup above, open in a way that fits it. Keep it tiny.`,
-    },
+    { role: 'user', content: personaBlock(p) + contextBlock(context) + opening },
   ];
   return normalize(await chatJSON(messages));
 }

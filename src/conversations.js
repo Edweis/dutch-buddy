@@ -32,8 +32,8 @@ export function getConversationContext(id) {
   return (row && row.context) || '';
 }
 
-// The identity assigned to this conversation (name, personality, voice). Falls back
-// to the default persona for chats created before personas existed.
+// The identity assigned to this conversation (name, voice, manner of speech). Falls
+// back to the default persona for chats created before personas existed.
 export function getConversationPersona(id) {
   const row = selectPersona.get(id);
   if (row && row.persona) {

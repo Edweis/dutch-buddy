@@ -49,7 +49,7 @@ db.exec(`
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     context    TEXT,                             -- optional English setup: scenario + vocab focus
-    persona    TEXT                              -- JSON {name, gender, voice, bio} for this chat
+    persona    TEXT                              -- JSON {name, gender, voice, manner} for this chat
   );
   CREATE TABLE IF NOT EXISTS messages (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
