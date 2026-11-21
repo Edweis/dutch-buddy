@@ -1,4 +1,5 @@
 extends layout
+include partials/start-form
 
 block content
   section.hero
@@ -29,9 +30,6 @@ block content
       .num= stats.mature
       .label mature
 
-  form.start-form(hx-post="/conversation/start", hx-target="main.container", hx-swap="innerHTML")
-    label.setup-label(for="context") What do you want to work on? <span>(optional)</span>
-    textarea#context.setup-input(name="context", rows="3", placeholder="e.g. You're a waiter at a café and I'm ordering lunch — focus on food, numbers and ordering. Or: let's practice telling the time, days of the week and dates.")
-    button.primary(type="submit") Start talking →
+  +startForm('Start talking →')
 
   p.hint Allow the microphone when asked. They speak in Dutch; tap 🎙️ to reply out loud.

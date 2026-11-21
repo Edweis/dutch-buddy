@@ -1,11 +1,11 @@
 extends layout
+include partials/start-form
 
 block content
   section
     .conv-head
       h1 Your chats
-      form(hx-post="/conversation/start", hx-target="main.container", hx-swap="innerHTML")
-        button.primary(type="submit") + New chat
+    +startForm('+ New chat')
 
     if convos.length === 0
       p.hint No conversations yet. Start a new chat to begin talking in Dutch.
