@@ -16,9 +16,9 @@ block content
       #composer.composer(class=error ? 'hidden' : '')
         p.transcript(data-transcript)
         .controls
-          button.record(type="button", data-record) Tap or press Space
-          button.ghost.hidden(type="button", data-save) Next line (Space)
-          button.ghost.hidden(type="button", data-cancel) Cancel (Esc)
+          button.record(type="button", data-record) Tap to speak
+          button.ghost.hidden(type="button", data-save) Next line
+          button.ghost.hidden(type="button", data-cancel) Cancel
 
       .session-links
         a.hint(href="/conversations") ← All chats

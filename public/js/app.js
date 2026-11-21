@@ -74,7 +74,8 @@
     if (last) playTTS(last.getAttribute('data-nl'), last.querySelector('[data-speak]'));
   }
 
-  // Send the learner's text, append Saar's reply, speak it.
+  // Send the learner's text and append Saar's reply (not played automatically —
+  // tap the reply's speaker button to hear it).
   async function sendReply(text) {
     const chat = document.getElementById('chat');
     const cid = chat && chat.getAttribute('data-cid');
@@ -100,7 +101,6 @@
         carrier.remove();
       }
       scrollChat();
-      speakLatestTutor();
     } catch (err) {
       chat.insertAdjacentHTML('beforeend', `<div class="bubble error"><p class="err">${esc(err.message)}</p></div>`);
     } finally {
@@ -115,7 +115,8 @@
   let recognizing = false;
   let finals = [];        // finalized segments on the current line (not yet banked)
   let savedLines = [];    // sentences banked with Space, each shown on its own line
-  let pendingText = null; // recognized reply awaiting your confirmation before it's sent
+  let hasInterim = false; // an utterance is mid-flight (live text shown, not yet finalized)
+  let abortUtterance = false; // swallow the next final result (its utterance was cancelled)
 
   // Render banked lines stacked, with the current line (finals + live interim) last.
   function renderTranscript(transcriptEl, interim) {
@@ -131,17 +132,25 @@
     savedLines.push(current);
     finals = [];
     renderTranscript(transcriptEl, '');
-    if (cancelBtn) cancelBtn.textContent = 'Redo sentence (Esc)';
+    if (cancelBtn) cancelBtn.textContent = 'Redo sentence';
     transcriptEl.classList.add('saved'); // brief green confirmation
     setTimeout(() => transcriptEl.classList.remove('saved'), 400);
   }
 
-  // Esc / Cancel: with banked lines, drop just the current un-banked attempt and
-  // keep listening so you can re-say that sentence. Otherwise cancel the recording.
+  // Esc / Cancel, step by step:
+  //  1. if a sentence is in progress (un-banked, incl. one still being recognized),
+  //     drop that attempt — and swallow its pending final so it can't re-appear;
+  //  2. else if there are banked lines, undo the last one so you can redo it;
+  //  3. else cancel the recording entirely.
   function redoOrCancel(btn, transcriptEl, cancelBtn) {
-    if (savedLines.length) {
+    if (finals.length || hasInterim) {
+      if (hasInterim) abortUtterance = true; // the in-flight final belongs to a cancelled sentence
       finals = [];
       renderTranscript(transcriptEl, '');
+    } else if (savedLines.length) {
+      savedLines.pop();
+      renderTranscript(transcriptEl, '');
+      if (!savedLines.length && cancelBtn) cancelBtn.textContent = 'Cancel';
     } else {
       stopRecording(false, btn, transcriptEl, cancelBtn);
     }
@@ -166,16 +175,18 @@
   function resetMicButton(btn, cancelBtn) {
     recognizing = false;
     savedLines = [];
+    hasInterim = false;
+    abortUtterance = false;
     btn.classList.remove('listening');
-    btn.textContent = 'Tap or press Space';
+    btn.textContent = 'Tap to speak';
     btn.disabled = false;
-    if (cancelBtn) { cancelBtn.classList.add('hidden'); cancelBtn.textContent = 'Cancel (Esc)'; }
+    if (cancelBtn) { cancelBtn.classList.add('hidden'); cancelBtn.textContent = 'Cancel'; }
     const saveBtn = document.querySelector('[data-save]');
     if (saveBtn) saveBtn.classList.add('hidden');
   }
 
-  // Stop listening and either discard (send=false) or move to the review step
-  // (send=true), where you see what was heard before it goes to Saar.
+  // Stop listening. If send=true, submit what was heard straight away; if false,
+  // discard it.
   function stopRecording(send, btn, transcriptEl, cancelBtn) {
     btn.disabled = true;
     const done = () => {
@@ -184,45 +195,17 @@
       const text = [...savedLines, finals.join(' ')].join(' ').replace(/\s+/g, ' ').trim();
       resetMicButton(btn, cancelBtn);
       finals = [];
-      if (!send) { transcriptEl.textContent = ''; return; }
+      transcriptEl.textContent = '';
+      if (!send) return;
       if (!text) { transcriptEl.textContent = '(nothing heard — try again)'; return; }
-      enterReview(text, btn, transcriptEl, cancelBtn);
+      addLearnerBubble(text);
+      sendReply(text);
     };
     if (recognizer) recognizer.stopContinuousRecognitionAsync(done, done);
     else done();
   }
 
-  // Review step: show the recognized sentence(s) and wait. Enter/tap sends it to
-  // Saar (reply shows and plays); Esc/Redo discards it so you can speak again.
-  function enterReview(text, btn, transcriptEl, cancelBtn) {
-    pendingText = text;
-    transcriptEl.textContent = text;
-    transcriptEl.classList.add('review');
-    btn.classList.add('review');
-    btn.textContent = 'Send (Enter)';
-    if (cancelBtn) { cancelBtn.classList.remove('hidden'); cancelBtn.textContent = 'Redo (Esc)'; }
-  }
-
-  function clearReview(transcriptEl, btn, cancelBtn) {
-    pendingText = null;
-    transcriptEl.textContent = '';
-    transcriptEl.classList.remove('review');
-    btn.classList.remove('review');
-    btn.textContent = 'Tap or press Space';
-    if (cancelBtn) cancelBtn.classList.add('hidden');
-  }
-
-  // Confirm the reviewed text: send it, show your bubble, fetch + play Saar's reply.
-  function commitReview(btn, transcriptEl, cancelBtn) {
-    if (!pendingText) return;
-    const text = pendingText;
-    clearReview(transcriptEl, btn, cancelBtn);
-    addLearnerBubble(text);
-    sendReply(text);
-  }
-
   async function toggleRecording(btn, transcriptEl, cancelBtn) {
-    if (pendingText) { commitReview(btn, transcriptEl, cancelBtn); return; }
     if (recognizing) { stopRecording(true, btn, transcriptEl, cancelBtn); return; }
     stopPlayback(); // starting to record — silence any Saar audio first
     if (!window.SpeechSDK) {
@@ -239,10 +222,12 @@
     }
     finals = [];
     savedLines = [];
+    hasInterim = false;
+    abortUtterance = false;
     recognizing = true;
     btn.classList.add('listening');
-    btn.textContent = 'Listening… — Enter to finish · Space for next line · Esc to redo';
-    if (cancelBtn) { cancelBtn.classList.remove('hidden'); cancelBtn.textContent = 'Cancel (Esc)'; }
+    btn.textContent = 'Listening…';
+    if (cancelBtn) { cancelBtn.classList.remove('hidden'); cancelBtn.textContent = 'Cancel'; }
     const saveBtn = document.querySelector('[data-save]');
     if (saveBtn) saveBtn.classList.remove('hidden');
     transcriptEl.textContent = '';
@@ -250,12 +235,30 @@
     const audioCfg = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
     recognizer = new SpeechSDK.SpeechRecognizer(cfg, audioCfg);
 
+    // Bias recognition toward very common Dutch words and chunks so it splits them
+    // faithfully (e.g. "je eten" instead of "jeeten") instead of inventing a merged word.
+    try {
+      const phrases = SpeechSDK.PhraseListGrammar.fromRecognizer(recognizer);
+      [
+        'ik', 'je', 'jij', 'u', 'het', 'de', 'een', 'niet', 'ook', 'wel', 'maar', 'want',
+        'wil', 'wat', 'waar', 'wanneer', 'hoe', 'waarom', 'heb', 'ben', 'is', 'gaan', 'doen',
+        'eten', 'drinken', 'werken', 'wonen', 'graag', 'vandaag', 'morgen', 'goed', 'leuk',
+        'ik wil', 'wil je', 'je eten', 'zullen we', 'hoe gaat het', 'ik vind', 'mag ik',
+      ].forEach((p) => phrases.addPhrase(p));
+    } catch (_) { /* phrase lists unsupported — fine */ }
+
     // Live interim text while you speak.
     recognizer.recognizing = (_s, e) => {
+      if (abortUtterance) return; // ignore the tail of a cancelled utterance
+      hasInterim = !!(e.result.text && e.result.text.trim());
       renderTranscript(transcriptEl, e.result.text || '');
     };
     // A finalized segment (after each natural pause) — keep going, don't stop.
     recognizer.recognized = (_s, e) => {
+      // If this utterance was cancelled (Esc between interim and final), swallow its
+      // final result so the sentence doesn't re-appear, then resume normally.
+      if (abortUtterance) { abortUtterance = false; hasInterim = false; renderTranscript(transcriptEl, ''); return; }
+      hasInterim = false;
       if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech && e.result.text) {
         finals.push(e.result.text);
         renderTranscript(transcriptEl, '');
@@ -286,13 +289,13 @@
 
     if (recordBtn) recordBtn.addEventListener('click', () => toggleRecording(recordBtn, transcriptEl, cancelBtn));
     if (saveBtn) saveBtn.addEventListener('click', () => saveProgress(transcriptEl, cancelBtn));
-    if (cancelBtn) cancelBtn.addEventListener('click', () => {
-      if (pendingText) clearReview(transcriptEl, recordBtn, cancelBtn); // Redo: drop the reviewed text
-      else redoOrCancel(recordBtn, transcriptEl, cancelBtn);
-    });
+    if (cancelBtn) cancelBtn.addEventListener('click', () => redoOrCancel(recordBtn, transcriptEl, cancelBtn));
 
     wireCoach();
-    speakLatestTutor(); // speak Saar's opening line
+    // Auto-play only the opening line of a brand-new chat (the single bubble on the
+    // page). On reloading an existing conversation, stay silent — don't replay the
+    // last reply; the user can tap a speaker button if they want to hear it.
+    if (document.querySelectorAll('#chat .bubble').length === 1) speakLatestTutor();
     scrollChat();
   }
 
@@ -344,22 +347,14 @@
     if (!recordBtn) return;
     if (e.code === 'Space' && !typing) {
       e.preventDefault(); // also stops a focused button from double-triggering
-      if (recognizing) saveProgress(transcriptEl, cancelBtn);     // bank this sentence, start a new line
-      else if (!pendingText) toggleRecording(recordBtn, transcriptEl, cancelBtn); // start listening
-    } else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !typing) {
-      if (recognizing) {
-        e.preventDefault(); // stop and show the result for review
-        stopRecording(true, recordBtn, transcriptEl, cancelBtn);
-      } else if (pendingText) {
-        e.preventDefault(); // confirm: send it, reply shows and plays
-        commitReview(recordBtn, transcriptEl, cancelBtn);
-      }
+      if (recognizing) saveProgress(transcriptEl, cancelBtn); // bank this sentence, start a new line
+      else toggleRecording(recordBtn, transcriptEl, cancelBtn); // start listening
+    } else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && recognizing && !typing) {
+      e.preventDefault(); // finish and send straight away
+      stopRecording(true, recordBtn, transcriptEl, cancelBtn);
     } else if (e.code === 'Escape' && recognizing) {
       e.preventDefault();
       redoOrCancel(recordBtn, transcriptEl, cancelBtn);
-    } else if (e.code === 'Escape' && pendingText) {
-      e.preventDefault(); // drop the reviewed text, speak again
-      clearReview(transcriptEl, recordBtn, cancelBtn);
     }
   });
 

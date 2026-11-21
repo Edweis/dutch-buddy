@@ -19,7 +19,14 @@ mixin bubble(m)
         span.who Saar
         button.icon(type="button" data-speak aria-label="Play")
           +icon-speaker
-      p.nl= m.nl
+      //- Show each sentence on its own line for easier reading (data-nl keeps the
+      //- full text so text-to-speech still reads it as one piece).
+      - var sentences = (String(m.nl).match(/[^.!?]+[.!?]*/g) || [m.nl]).map(function (s) { return s.trim(); }).filter(Boolean)
+      p.nl
+        each s, i in sentences
+          if i
+            br
+          = s
       if m.glossary && m.glossary.length
         .gloss
           each g in m.glossary
