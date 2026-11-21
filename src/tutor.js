@@ -3,7 +3,7 @@
 // output, recycling, gentle selective correction) — without looking up the
 // learner's known words or past conversations.
 
-import { chatJSON } from './llm.js';
+import { chatJSON, pairList } from './llm.js';
 
 export const NAME = 'Saar';
 
@@ -122,11 +122,7 @@ function normalize(out) {
   return {
     nl: String(out?.nl || '').trim(),
     en: String(out?.en || '').trim(),
-    glossary: Array.isArray(out?.glossary)
-      ? out.glossary
-          .filter((g) => g && g.nl)
-          .map((g) => ({ nl: String(g.nl).trim(), en: String(g.en || '').trim() }))
-      : [],
+    glossary: pairList(out?.glossary),
     mistakes: Array.isArray(out?.mistakes)
       ? out.mistakes.map((s) => String(s).trim()).filter(Boolean)
       : [],

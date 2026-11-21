@@ -4,16 +4,13 @@
 
 (function () {
   // ---- Audio playback with a play/stop toggle on each speaker button --------
-  const HI = 'class="hi" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"';
-  const ICON_SPEAKER = `<svg ${HI}><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z"/></svg>`;
-  const ICON_PAUSE = `<svg ${HI}><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5"/></svg>`;
-
+  // Each speak button carries both icons (from the Pug mixin); the `playing`
+  // class decides which one CSS shows, so the client never rebuilds icon markup.
   let currentAudio = null;
   let currentBtn = null; // the speaker button driving currentAudio (null for auto-play)
 
   function setPlayIcon(btn, playing) {
     if (!btn) return;
-    btn.innerHTML = playing ? ICON_PAUSE : ICON_SPEAKER;
     btn.classList.toggle('playing', playing);
     btn.setAttribute('aria-label', playing ? 'Stop' : 'Play');
   }
@@ -51,20 +48,17 @@
     d.textContent = s;
     return d.innerHTML;
   }
-  function escAttr(s) { return esc(s).replace(/"/g, '&quot;'); }
 
+  // Show the learner's own line instantly by cloning the server-rendered template
+  // (#tmpl-learner), so its markup stays identical to reloaded bubbles.
   function addLearnerBubble(text) {
     const chat = document.getElementById('chat');
-    if (!chat) return;
-    chat.insertAdjacentHTML(
-      'beforeend',
-      `<div class="bubble learner" data-nl="${escAttr(text)}">` +
-        '<div class="bubble-head"><span class="who">You</span>' +
-          `<button class="icon" type="button" data-speak aria-label="Play">${ICON_SPEAKER}</button>` +
-        '</div>' +
-        `<p class="nl">${esc(text)}</p>` +
-      '</div>'
-    );
+    const tmpl = document.getElementById('tmpl-learner');
+    if (!chat || !tmpl) return;
+    const bubble = tmpl.content.firstElementChild.cloneNode(true);
+    bubble.setAttribute('data-nl', text);
+    bubble.querySelector('.nl').textContent = text;
+    chat.appendChild(bubble);
     scrollChat();
   }
 

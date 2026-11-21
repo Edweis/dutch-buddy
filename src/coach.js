@@ -2,7 +2,7 @@
 // for help mid-conversation ("how do I say...", "why leren not leer?"). It sees
 // the recent conversation for context and replies briefly with example phrases.
 
-import { chatJSON } from './llm.js';
+import { chatJSON, pairList } from './llm.js';
 
 const SYSTEM = `You are a friendly, concise Dutch teacher helping an English-speaking
 beginner DURING a live Dutch conversation. They are momentarily stuck and ask you
@@ -41,10 +41,6 @@ export async function coachAnswer(question, history) {
   ]);
   return {
     answer: String(out?.answer || '').trim(),
-    examples: Array.isArray(out?.examples)
-      ? out.examples
-          .filter((e) => e && e.nl)
-          .map((e) => ({ nl: String(e.nl).trim(), en: String(e.en || '').trim() }))
-      : [],
+    examples: pairList(out?.examples),
   };
 }

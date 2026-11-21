@@ -6,6 +6,14 @@ const OR_MODEL = process.env.OPEN_ROUTER_MODEL?.trim() || 'anthropic/claude-haik
 export const llmAvailable = Boolean(OR_KEY);
 export const llmStatus = () => (OR_KEY ? `OpenRouter(${OR_MODEL})` : 'none');
 
+// Normalize a model-returned list of {nl, en} pairs (glossary, coach examples):
+// drop anything without a Dutch side and trim both fields.
+export function pairList(arr) {
+  return Array.isArray(arr)
+    ? arr.filter((p) => p && p.nl).map((p) => ({ nl: String(p.nl).trim(), en: String(p.en || '').trim() }))
+    : [];
+}
+
 // Returns a parsed JSON object from the model.
 export async function chatJSON(messages) {
   if (!OR_KEY) throw new Error('Set OPEN_ROUTER_API_KEY to enable the tutor.');

@@ -13,6 +13,10 @@ block content
           each m in messages
             +bubble(m)
 
+      //- Cloned by the client to show the learner's line instantly (same markup as reloaded bubbles).
+      template#tmpl-learner
+        +bubble({ role: 'learner', nl: '' })
+
       #composer.composer(class=error ? 'hidden' : '')
         p.transcript(data-transcript)
         .controls

@@ -48,16 +48,17 @@ function parseCorrection(note) {
   return null;
 }
 
-function parseGloss(gloss) {
-  if (!gloss) return [];
-  try { const a = JSON.parse(gloss); return Array.isArray(a) ? a : []; } catch (_) { return []; }
+// Parse a JSON array column, tolerating null/legacy/bad values.
+function jsonArray(text) {
+  if (!text) return [];
+  try { const a = JSON.parse(text); return Array.isArray(a) ? a : []; } catch (_) { return []; }
 }
 
 export function getMessages(conversationId) {
   return selectMessages.all(conversationId).map((m) => ({
     role: m.role, nl: m.nl, en: m.en,
     correction: parseCorrection(m.note),
-    glossary: parseGloss(m.gloss),
+    glossary: jsonArray(m.gloss),
   }));
 }
 
@@ -86,7 +87,7 @@ export function getCoachMessages(conversationId) {
   return selectCoach.all(conversationId).map((r) => ({
     question: r.question,
     answer: r.answer,
-    examples: r.examples ? JSON.parse(r.examples) : [],
+    examples: jsonArray(r.examples),
   }));
 }
 
