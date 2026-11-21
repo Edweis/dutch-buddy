@@ -3,14 +3,40 @@
 // Azure Speech SDK (token from /speech-token), and posts it back for the next turn.
 
 (function () {
-  let currentAudio = null;
+  // ---- Audio playback with a play/stop toggle on each speaker button --------
+  const HI = 'class="hi" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"';
+  const ICON_SPEAKER = `<svg ${HI}><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z"/></svg>`;
+  const ICON_PAUSE = `<svg ${HI}><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5"/></svg>`;
 
-  function playTTS(text) {
+  let currentAudio = null;
+  let currentBtn = null; // the speaker button driving currentAudio (null for auto-play)
+
+  function setPlayIcon(btn, playing) {
+    if (!btn) return;
+    btn.innerHTML = playing ? ICON_PAUSE : ICON_SPEAKER;
+    btn.classList.toggle('playing', playing);
+    btn.setAttribute('aria-label', playing ? 'Stop' : 'Play');
+  }
+
+  // Stop whatever is playing and restore its button to the speaker icon.
+  function stopPlayback() {
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+    if (currentBtn) { setPlayIcon(currentBtn, false); currentBtn = null; }
+  }
+
+  // Play Dutch text. Always starts from the beginning; `btn` (if given) shows a
+  // pause icon while playing and reverts when it ends or is stopped.
+  function playTTS(text, btn) {
     if (!text) return;
+    stopPlayback();
     try {
-      if (currentAudio) { currentAudio.pause(); currentAudio = null; }
       const audio = new Audio(`/tts?text=${encodeURIComponent(text)}`);
       currentAudio = audio;
+      currentBtn = btn || null;
+      setPlayIcon(currentBtn, true);
+      const reset = () => { if (currentAudio === audio) stopPlayback(); };
+      audio.addEventListener('ended', reset);
+      audio.addEventListener('error', reset);
       audio.play().catch(() => {}); // autoplay may be blocked until first interaction
     } catch (_) {}
   }
@@ -25,13 +51,19 @@
     d.textContent = s;
     return d.innerHTML;
   }
+  function escAttr(s) { return esc(s).replace(/"/g, '&quot;'); }
 
   function addLearnerBubble(text) {
     const chat = document.getElementById('chat');
     if (!chat) return;
     chat.insertAdjacentHTML(
       'beforeend',
-      `<div class="bubble learner"><div class="who">You</div><p class="nl">${esc(text)}</p></div>`
+      `<div class="bubble learner" data-nl="${escAttr(text)}">` +
+        '<div class="bubble-head"><span class="who">You</span>' +
+          `<button class="icon" type="button" data-speak aria-label="Play">${ICON_SPEAKER}</button>` +
+        '</div>' +
+        `<p class="nl">${esc(text)}</p>` +
+      '</div>'
     );
     scrollChat();
   }
@@ -39,7 +71,7 @@
   function speakLatestTutor() {
     const bubbles = document.querySelectorAll('#chat .bubble.tutor');
     const last = bubbles[bubbles.length - 1];
-    if (last) playTTS(last.getAttribute('data-nl'));
+    if (last) playTTS(last.getAttribute('data-nl'), last.querySelector('[data-speak]'));
   }
 
   // Send the learner's text, append Saar's reply, speak it.
@@ -83,6 +115,7 @@
   let recognizing = false;
   let finals = [];        // finalized segments on the current line (not yet banked)
   let savedLines = [];    // sentences banked with Space, each shown on its own line
+  let pendingText = null; // recognized reply awaiting your confirmation before it's sent
 
   // Render banked lines stacked, with the current line (finals + live interim) last.
   function renderTranscript(transcriptEl, interim) {
@@ -141,8 +174,8 @@
     if (saveBtn) saveBtn.classList.add('hidden');
   }
 
-  // Tear down the recognizer. If send=true, submit what was heard; if false,
-  // discard it (the Cancel button).
+  // Stop listening and either discard (send=false) or move to the review step
+  // (send=true), where you see what was heard before it goes to Saar.
   function stopRecording(send, btn, transcriptEl, cancelBtn) {
     btn.disabled = true;
     const done = () => {
@@ -153,16 +186,45 @@
       finals = [];
       if (!send) { transcriptEl.textContent = ''; return; }
       if (!text) { transcriptEl.textContent = '(nothing heard — try again)'; return; }
-      transcriptEl.textContent = '';
-      addLearnerBubble(text);
-      sendReply(text);
+      enterReview(text, btn, transcriptEl, cancelBtn);
     };
     if (recognizer) recognizer.stopContinuousRecognitionAsync(done, done);
     else done();
   }
 
+  // Review step: show the recognized sentence(s) and wait. Enter/tap sends it to
+  // Saar (reply shows and plays); Esc/Redo discards it so you can speak again.
+  function enterReview(text, btn, transcriptEl, cancelBtn) {
+    pendingText = text;
+    transcriptEl.textContent = text;
+    transcriptEl.classList.add('review');
+    btn.classList.add('review');
+    btn.textContent = 'Send (Enter)';
+    if (cancelBtn) { cancelBtn.classList.remove('hidden'); cancelBtn.textContent = 'Redo (Esc)'; }
+  }
+
+  function clearReview(transcriptEl, btn, cancelBtn) {
+    pendingText = null;
+    transcriptEl.textContent = '';
+    transcriptEl.classList.remove('review');
+    btn.classList.remove('review');
+    btn.textContent = 'Tap or press Space';
+    if (cancelBtn) cancelBtn.classList.add('hidden');
+  }
+
+  // Confirm the reviewed text: send it, show your bubble, fetch + play Saar's reply.
+  function commitReview(btn, transcriptEl, cancelBtn) {
+    if (!pendingText) return;
+    const text = pendingText;
+    clearReview(transcriptEl, btn, cancelBtn);
+    addLearnerBubble(text);
+    sendReply(text);
+  }
+
   async function toggleRecording(btn, transcriptEl, cancelBtn) {
+    if (pendingText) { commitReview(btn, transcriptEl, cancelBtn); return; }
     if (recognizing) { stopRecording(true, btn, transcriptEl, cancelBtn); return; }
+    stopPlayback(); // starting to record — silence any Saar audio first
     if (!window.SpeechSDK) {
       transcriptEl.textContent = 'Speech SDK not loaded — check your connection.';
       return;
@@ -179,7 +241,7 @@
     savedLines = [];
     recognizing = true;
     btn.classList.add('listening');
-    btn.textContent = 'Listening… — Enter to send · Space for next line · Esc to redo';
+    btn.textContent = 'Listening… — Enter to finish · Space for next line · Esc to redo';
     if (cancelBtn) { cancelBtn.classList.remove('hidden'); cancelBtn.textContent = 'Cancel (Esc)'; }
     const saveBtn = document.querySelector('[data-save]');
     if (saveBtn) saveBtn.classList.remove('hidden');
@@ -224,7 +286,10 @@
 
     if (recordBtn) recordBtn.addEventListener('click', () => toggleRecording(recordBtn, transcriptEl, cancelBtn));
     if (saveBtn) saveBtn.addEventListener('click', () => saveProgress(transcriptEl, cancelBtn));
-    if (cancelBtn) cancelBtn.addEventListener('click', () => redoOrCancel(recordBtn, transcriptEl, cancelBtn));
+    if (cancelBtn) cancelBtn.addEventListener('click', () => {
+      if (pendingText) clearReview(transcriptEl, recordBtn, cancelBtn); // Redo: drop the reviewed text
+      else redoOrCancel(recordBtn, transcriptEl, cancelBtn);
+    });
 
     wireCoach();
     speakLatestTutor(); // speak Saar's opening line
@@ -279,22 +344,33 @@
     if (!recordBtn) return;
     if (e.code === 'Space' && !typing) {
       e.preventDefault(); // also stops a focused button from double-triggering
-      if (recognizing) saveProgress(transcriptEl, cancelBtn); // bank this sentence, start a new line
-      else toggleRecording(recordBtn, transcriptEl, cancelBtn); // start listening
-    } else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && recognizing && !typing) {
-      e.preventDefault(); // send everything; don't let a focused button double-fire
-      stopRecording(true, recordBtn, transcriptEl, cancelBtn);
+      if (recognizing) saveProgress(transcriptEl, cancelBtn);     // bank this sentence, start a new line
+      else if (!pendingText) toggleRecording(recordBtn, transcriptEl, cancelBtn); // start listening
+    } else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !typing) {
+      if (recognizing) {
+        e.preventDefault(); // stop and show the result for review
+        stopRecording(true, recordBtn, transcriptEl, cancelBtn);
+      } else if (pendingText) {
+        e.preventDefault(); // confirm: send it, reply shows and plays
+        commitReview(recordBtn, transcriptEl, cancelBtn);
+      }
     } else if (e.code === 'Escape' && recognizing) {
       e.preventDefault();
       redoOrCancel(recordBtn, transcriptEl, cancelBtn);
+    } else if (e.code === 'Escape' && pendingText) {
+      e.preventDefault(); // drop the reviewed text, speak again
+      clearReview(transcriptEl, recordBtn, cancelBtn);
     }
   });
 
   // Delegate speak buttons on anything carrying data-nl (tutor bubbles, coach examples).
   document.addEventListener('click', (e) => {
-    if (!e.target.closest('[data-speak]')) return;
+    const btn = e.target.closest('[data-speak]');
+    if (!btn) return;
     const host = e.target.closest('[data-nl]');
-    if (host) playTTS(host.getAttribute('data-nl'));
+    if (!host) return;
+    if (currentBtn === btn) { stopPlayback(); return; } // clicking the playing button stops it
+    playTTS(host.getAttribute('data-nl'), btn);           // otherwise (re)play from the start
   });
 
   document.addEventListener('DOMContentLoaded', initComposer);

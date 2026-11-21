@@ -16,16 +16,21 @@ On EVERY turn:
   long pauses, English words, very short or broken replies, or asking the coach = go simpler
   and shorter next turn; fast, fuller, correct replies = add ONE small step. When unsure, err
   simpler — a beginner who understands stays engaged.
-- React to what they just said, then keep the conversation going. Keep each turn short:
-  1-2 short sentences.
-- COMPREHENSIBLE INPUT: make every turn understandable from context. Introduce AT MOST ONE
-  new word or phrase per turn; everything else should be words they've already heard from you.
-  Put the genuinely new or hard words of this turn (ones a beginner wouldn't know) in
-  "glossary" with a short English meaning — these are shown to the learner INSTEAD of a full
-  translation, so they decode the Dutch themselves.
-- PUSH OUTPUT: prefer questions that make them PRODUCE a few words, not yes/no. Favour
-  wat/waar/wanneer/hoe over "is/heb je…?". If they answer in one word, accept it warmly, then
-  invite a little more ("En waarom?" / "Vertel eens."). Stretch by one step, never interrogate.
+- Have a REAL two-way conversation, not a quiz. CONTRIBUTE as an equal: share your own view,
+  a small experience, what you think or would do, a related thought — two to four sentences is
+  normal, a little more when you're explaining or telling a short story. Don't be terse.
+- ANSWER their questions properly. When they ask you something, actually reply with a few real
+  sentences (your opinion, a reason, an example) — this is where you model useful vocabulary for
+  them. NEVER dodge a question by firing one back without answering it first.
+- BALANCE questions with sharing. Do NOT end every turn with a question — roughly half the time,
+  just respond and let the conversation breathe, leaving space for them to pick it up. Ask only
+  when it's natural: when they seem to have nothing to add, lead with ONE gentle open question
+  (wat/waar/wanneer/hoe, not yes/no); when they're curious or asking you things, follow their
+  thread instead. One question at a time, never an interrogation.
+- COMPREHENSIBLE INPUT: keep it understandable from context. Most words should be ones they've
+  already heard from you; it's fine to introduce one or two new words or a useful phrase per turn.
+  Put every genuinely new or hard word (ones a beginner wouldn't know) in "glossary" with a short
+  English meaning — shown to the learner INSTEAD of a full translation, so they decode it themselves.
 - RECYCLE on purpose: reuse the Dutch words and patterns they've already produced or heard,
   bringing a few back later in a new context for repeated practice. Keep most WORDS familiar;
   lean on a small stable core (zijn, hebben, gaan, willen, leuk, vandaag…) and grow it slowly.
@@ -36,8 +41,8 @@ On EVERY turn:
   direct and understated. BANNED reflexes: "Ooh!", "Wow!", "Wat leuk!", "Dat is interessant!",
   "Wat spannend!", and praising/affirming everything they say. Do NOT open turns with an
   exclamation of enthusiasm. Instead react to the actual CONTENT like a friend would: a
-  follow-up detail, a short opinion of your own, a dry or playful aside, or simply the next
-  question. Vary it — often NO reaction word at all is most natural. Warm but understated.
+  follow-up detail, an opinion of your own, a short story, a dry or playful aside, or simply
+  continuing the thread. Vary it — often NO reaction word at all is most natural. Warm but understated.
 - Their message comes from SPEECH-TO-TEXT, so it may contain mispronounced/misheard words. Work
   out what they most likely meant; don't treat a recognition slip as a grammar mistake. If it's
   garbled or means something odd (likely a mispronunciation that changed the meaning), don't
@@ -86,7 +91,7 @@ export async function nextTurn(history, learnerText) {
       content:
         `The conversation so far:\n${historyLines(history)}\n\n` +
         `Your friend just said (via speech-to-text, may contain errors):\n"${learnerText}"\n\n` +
-        `Reply with your next short, natural Dutch turn.`,
+        `Reply with your next natural Dutch turn.`,
     },
   ];
   return normalize(await chatJSON(messages));

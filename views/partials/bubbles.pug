@@ -6,8 +6,11 @@ mixin icon-speaker
 //- One chat bubble, tutor or learner, driven by a message object {role, nl, en, note}.
 mixin bubble(m)
   if m.role === 'learner'
-    .bubble.learner
-      .who You
+    .bubble.learner(data-nl=m.nl)
+      .bubble-head
+        span.who You
+        button.icon(type="button" data-speak aria-label="Play")
+          +icon-speaker
       p.nl= m.nl
       +correction(m.correction)
   else
